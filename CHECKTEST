@@ -1,0 +1,55 @@
+# Paton Group Test Suite May 15 2019
+test_dir='/projects/rpaton@colostate.edu/bin/EXAMPLE_JOBS'
+
+if [ $# -eq 0 ]
+  then
+    echo "x  No arguments supplied"
+    echo "   Specify test no. (01, 02 etc) or 'all'"
+    test='none'
+fi
+
+if [ $# -ne 0 ]
+  then
+    test=$1
+    echo "o  Runnning test jobs for" $test
+fi
+
+# for the tests below if the output files already exist then the job will be skipped
+# if output exists then the job will be checked against example outputs to ensure it finished properly
+echo -e '   CHECKING TEST JOBS\n'
+
+checkfunction()
+{
+if [ -d $1 ]; then
+  cd $1
+  echo -e '   CHECKING' $1':'
+  if [ -f $2 ]; then
+  if grep -q $3 $2; then
+    echo -e 'o  '$2' PASS! terminated normally'
+  else
+    echo 'x  '$2' FAIL! terminated abnormally'
+  fi
+  else
+     echo 'x  '$2' FAIL! File not found'
+  fi
+  cd ..
+  else echo 'x  '$1' FAIL! Directory not found'
+fi
+}
+
+# Gaussian 16 job 
+if [ "$test" == "01" ] || [ "$test" == "all" ]; then
+eg_dir='example_01'
+eg_file='gauss_example.log'
+termination='Normal termination'
+checkfunction $eg_dir $eg_file $termination
+fi
+
+# Orca job 
+if [ "$test" == "02" ] || [ "$test" == "all" ]; then
+eg_dir='example_02'
+eg_file='orca_example.out'
+termination='ORCA TERMINATED NORMALLY'
+checkfunction $eg_dir $eg_file $termination
+fi
+ 

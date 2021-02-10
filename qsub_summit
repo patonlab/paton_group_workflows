@@ -1,0 +1,403 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+from __future__ import print_function
+
+"""
+Submit script for CU Summit cluster. Generates and submits bash scripts for standard programs
+@author: jake
+"""
+
+import argparse
+import datetime
+import os
+import sys
+import time
+import re
+import subprocess
+
+ACCOUNTS_LIST = ['csu-general','csu-summit-rsp']
+PARTITION_ACCEPT = ['shas', 'shas-testing', 'sgpu', 'smem', 'sknl', 'ssky', 'ssky-csu-rsp', 'ssky-preemptable',]
+QOS_ACCEPT = ['normal', 'testing', 'long', 'condo']
+MAIL_ACCEPT = ['END', 'BEGIN', 'FAIL', 'ALL']
+
+# Print formatting
+stars = "   " + "*" * 93
+
+# Enables output to terminal and to text file
+class Logger:
+   def __init__(self, filein, suffix, append):
+      if os.path.exists(filein+"_"+append+"."+suffix): self.log = open(filein+"_"+append+"."+suffix, 'a' )
+      else: self.log = open(filein+"_"+append+"."+suffix, 'w' )
+
+   def Write(self, message):
+      print(message, end='')
+      self.log.write(message)
+
+   def Fatal(self, message):
+      print(message+"\n")
+      self.log.write(message + "\n"); self.Finalize()
+      sys.exit(1)
+
+   def Finalize(self):
+      self.log.close()
+
+def valid_walltime(s):
+    try:
+        return time.strptime(s, "%H:%M:%S")
+    except ValueError:
+        msg = "Not a valid date: '{0}'.".format(s)
+        raise argparse.ArgumentTypeError(msg)
+
+
+def determine_calculation_type(input_file):
+    abs_path = os.path.abspath(input_file)
+    abs_path = os.path.dirname(abs_path)
+    base_file = os.path.basename(input_file)
+    file_name, extension = os.path.splitext(base_file)
+    if extension == '.com':
+        file_type = 'gaussian'
+    elif extension == '.inp':
+        file_type = 'orca'
+    elif extension == '.sp':
+        file_type = 'terachem'
+    elif extension == '.xyz':
+        file_type = 'xtb'
+    elif extension == '.qcin':
+        file_type = 'qchem'
+    else:
+        file_type = 'none'
+
+    return abs_path, file_name, file_type
+
+
+def generate_bash_script(abs_path, job_name, file_type, walltime, partition, qos, mail, nodes, nproc, chk_file, account, version, code, args):
+    bash_text = '#!/bin/bash\n'
+    bash_text += '#SBATCH --account=' + account + '\n'
+    if qos == "normal" and int(walltime.split(':')[0]) > 24: print("WARNING: too many hours requested for qos = normal"); sys.exit()
+    if qos == "condo" and int(walltime.split(':')[0]) > 168: print("WARNING: too many hours requested for qos = condo"); sys.exit()
+    bash_text += '#SBATCH -J ' + job_name + '\n'
+    bash_text += '#SBATCH -p ' + partition + '\n'
+    bash_text += '#SBATCH --qos ' + qos + '\n'
+    bash_text += '#SBATCH -t ' + walltime + '\n'
+    bash_text += '#SBATCH -N {0}\n'.format(nodes)
+    bash_text += '#SBATCH --export=NONE\n'
+    if nproc > 1:
+        bash_text += '#SBATCH --ntasks-per-node {0}\n'.format(nproc)
+    if mail is not None:
+        bash_text += '#SBATCH --mail-type=' + mail + '\n'
+        bash_text += '#SBATCH --mail-user=' + os.environ['USER'] + '\n'
+    bash_text += '\n'
+
+    if file_type == 'orca':
+        bash_text += generate_orca_script(job_name, nproc, chk_file, version)
+    elif file_type == 'gaussian':
+        bash_text += generate_gaussian_script(job_name, chk_file, version)
+    elif file_type == 'terachem':
+        bash_text += generate_terachem_script(job_name)
+    elif file_type == 'xtb':
+        bash_text += generate_xtb_script(job_name, code, nproc, args)
+    elif file_type == 'qchem':
+        bash_text += generate_qchem_script(job_name,nproc)
+
+    sub_script = abs_path + '/' + job_name + '.sh'
+    with open(sub_script, 'w') as f:
+        f.write(bash_text)
+
+    ## This is for automated submission using sbatch
+    command = "sbatch "+sub_script+" > /dev/null"
+    retcode = subprocess.call(command, shell=True)
+
+def generate_terachem_script(job_name):
+    bash_text = ('export TeraChem=/projects/$RSP/TeraChem\n'
+                 'export NBOEXE=/projects/$RSP/TeraChem/bin/nbo6.i4.exe\n'
+                 'export OMP_NUM_THREADS=24\n'
+                 'export LD_LIBRARY_PATH=/projects/$RSP/TeraChem/lib:$LD_LIBRARY_PATH\n'
+                 'export PATH=/projects/$RSP/TeraChem/bin:$PATH\n')
+
+    bash_text += ('\n'
+                  'terajob={0}\n'
+                  '$TeraChem/bin/terachem $terajob.sp >> $terajob.out\n').format(job_name)
+    return bash_text
+
+def generate_xtb_script(job_name, code, nproc, args):
+    bash_text = ('# XTB\n'
+                 'export XTBHOME=/projects/$RSP/xtb-6.4.0\n'
+                 'export PATH=$PATH:$XTBHOME\n'
+                 'xtbjob={0}\n').format(job_name)
+    if code == 'xtb':
+        bash_text += ('\n'
+            '$XTBHOME/bin/xtb $xtbjob.xyz '+args+' > $xtbjob.xtb\n')
+    if code == 'crest':
+        bash_text += ('\n'
+            'export PATH=$PATH:$XTBHOME/bin:\n'
+            '$XTBHOME/crest $xtbjob.xyz '+args+' -T {0} -niceprint > $xtbjob.out\n'
+            'rm -r METADYN* NORMMD* MRMSD wbo cregen_* coord*\n'
+            'mv crest_conformers.xyz $xtbjob.confs.xyz\n'
+            'mv crest_best.xyz $xtbjob.best.xyz\n'
+            'rm crest*').format(nproc)
+    if code == 'enso':
+        bash_text += ('\n'
+            'export PATH=$PATH:$XTBHOME/bin:\n'
+            'export PARA_ARCH=SMP\n'
+            'export PARNODES=4\n'  ## omp
+            '$XTBHOME/crest $xtbjob.xyz '+args+' -T {0} -niceprint > $xtbjob.out\n'
+            'source activate DL_CPU\n' #NOT WORKING
+            'cp /home/$USER/bin/enso.py enso.py\n'
+            'python enso.py\n'
+            'export PYTHONUNBUFFERED=1\n'
+            'python enso.py -run > enso.out\n'
+            'rm enso.py')
+    return bash_text
+
+def generate_gaussian_script(job_name, chk_file, version):
+    bash_text = ('g16root="/projects/$RSP"\n'
+                 'export g16root\n')
+    if version == 'b01':
+                 bash_text += '. $g16root/g16_b_01/bsd/g16.profile\n'
+    else:
+                 bash_text += '. $g16root/g16/bsd/g16.profile\n'
+    bash_text += ('Sctchpath="/scratch/summit/$USER/$SLURM_JOB_ID"\n'
+                 'mkdir $Sctchpath\n'
+                 '\n'
+                 'gaujob={0}\n'
+                 'Homepath=$(pwd)\n'
+                 '\n'
+                 'cp "$gaujob.com" $Sctchpath\n').format(job_name)
+
+    bash_text += 'PATH=$PATH:/projects/$RSP/nbo7/bin\n'
+
+    if chk_file is not None:
+        bash_text += 'cp "{0}" $Sctchpath\n'.format(chk_file)
+
+    bash_text += ('\n'
+                  'cd $Sctchpath\n'
+                  '\n'
+                  '# Add useful info to top of output file\n'
+                  '\n'
+                  'touch $Homepath/$gaujob.log\n'
+                  'echo "Job Start Time: $(date)" > $Homepath/$gaujob.log\n'
+                  'echo "SLURM Job ID: $SLURM_JOB_ID" >> $Homepath/$gaujob.log\n'
+                  'echo "SLURM Job Name: $SLURM_JOB_NAME" >> $Homepath/$gaujob.log\n'
+                  '\n')
+    if version == 'b01':
+                 bash_text += '$g16root/g16_b_01/g16 < $Sctchpath/$gaujob.com >> $Homepath/$gaujob.log\n'
+    else:
+                 bash_text += '$g16root/g16/g16 < $Sctchpath/$gaujob.com >> $Homepath/$gaujob.log\n'
+    bash_text += ('\n'
+                  'Gaussian Job finished - now looking for checkpoint file'
+                  'cp $Sctchpath/*.chk $Homepath/\n')
+    return bash_text
+
+def generate_orca_script(job_name, nproc, chk_file, version):
+    bash_text = ('module load gcc/6.1.0\n'
+                 'module load openmpi/2.0.1\n'
+                 '\n'
+                 'export PATH=$PATH:/curc/sw/openmpi/2.0.1/gcc/6.1.0/bin\n'
+                 'export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/curc/sw/openmpi/2.0.1/gcc/6.1.0/lib\n'
+                 '\n')
+    if version == 'v401':
+                 bash_text += 'OrcaPath="/projects/$RSP/orca_4_0_1_2_linux_x86-64"\n'
+    elif version == 'v412':
+                 bash_text += 'OrcaPath="/projects/$RSP/orca_4_1_2_linux_x86-64_openmpi215"\n'
+    elif version == 'v420':
+                 bash_text += 'OrcaPath="/projects/$RSP/orca_4_2_0_linux_x86-64_openmpi216"\n'
+    else:
+                 bash_text += 'OrcaPath="/projects/$RSP/orca_4_2_1_linux_x86-64_openmpi216"\n'
+    bash_text += ('\n'
+                 'Orcajob={0}\n'
+                 '# Sctchpath=/scratch/local/$SLURM_JOB_ID\n'
+                 'Sctchpath="/scratch/summit/$USER/$SLURM_JOB_ID"\n'
+                 'Homepath=$(pwd)\n'
+                 'mkdir $Sctchpath\n'
+                 '\n'
+                 'cp "$Orcajob.inp" $Sctchpath\n').format(job_name)
+
+    if chk_file is not None:
+        bash_text += 'cp "{0}" $Sctchpath\n'.format(chk_file)
+
+    bash_text += ('\n'
+                  'cd $Sctchpath\n'
+                  '\n')
+
+    #bash_text += 'hostlist -e $SLURM_JOB_NODELIST > ./$Orcajob.nodes\n'
+    #if nproc > 1:
+    #    bash_text += "sed -e 's/$/ slots={0}/' -i ./$Orcajob.nodes\n".format(nproc)
+
+    bash_text += ('\n'
+                  '# Add useful info to top of output file\n'
+                  '\n'
+                  'touch $Homepath/$Orcajob.out\n'
+                  'echo "Job Start Time: $(date)" > $Homepath/$Orcajob.out\n'
+                  'echo "SLURM Job ID: $SLURM_JOB_ID" >> $Homepath/$Orcajob.out\n'
+                  'echo "SLURM Job Name: $SLURM_JOB_NAME" >> $Homepath/$Orcajob.out\n'
+                  'echo "SLURM Job Nodes:" >> $Homepath/$Orcajob.out\n'
+                  'cat ./$Orcajob.nodes >> $Homepath/$Orcajob.out\n'
+                  '\n'
+                  '$OrcaPath/orca $Sctchpath/$Orcajob.inp >> $Homepath/$Orcajob.out\n'
+                  '\n'
+                  'cp ./$Orcajob.* $Homepath/\n')
+                  #'cp ./$Orcajob.prop $Homepath/\n'
+                  #'cp ./$Orcajob_property.txt $Homepath/\n'
+                  #'cp ./$Orcajob.qro $Homepath/\n'
+                  #'cp ./$Orcajob.uno $Homepath/\n'
+                  #'cp ./$Orcajob.unso $Homepath/\n')
+    return bash_text
+
+def generate_qchem_script(job_name, nproc):
+    bash_text = ('\n'
+        'qcroot="/projects/$RSP"\n'
+        'export qcroot\n'
+        '. $qcroot/qchem/qcenv.sh\n'
+        'Sctchpath="/scratch/summit/$USER/$SLURM_JOB_ID"\n'
+        'mkdir $Sctchpath\n'
+        'QCSCRATCH=$Sctchpath\n'
+        'export QCSCRATCH\n'
+        'qcjob={0}\n'
+        'Homepath=$(pwd)\n'
+        'cp "$qcjob.qcin" $Sctchpath\n'
+        'cd $Sctchpath\n'
+        '\n'
+        '# Add useful info to top of output file\n'
+        'qchem -nt {1} $Sctchpath/$qcjob.qcin > $Homepath/$qcjob.out\n'.format(job_name,nproc))
+    return bash_text
+
+def parse_gaussian_inp(input_file, nproc):
+    with open(input_file, 'rU') as f:
+        text = f.read()
+
+    old_chk_results = re.search(r'%oldchk= *"?(\w+.chk)"?', text)
+    chk_results = re.search(r'%chk= *"?(\w+.chk)"?', text)
+
+    f = open(input_file,"r")
+    for line in f.readlines():
+        if line.lower().find('%nproc') > -1:
+            try: n_cpu = int(line.split('=')[1])
+            except: pass
+
+    if n_cpu != nproc:
+        print("number of processors requested doesn't match input file!")
+        sys.exit()
+
+    if not chk_results:
+        pass
+	#print("Gaussian com file must have chk file line")
+        #sys.exit(1)
+
+    try: chk_file = chk_results.group(1)
+    except AttributeError: chk_file = ''
+
+    if old_chk_results:  # if oldchk is specified in com file
+        chk_file = old_chk_results.group(1)
+        if not os.path.isfile(chk_file):  # error out if oldchk file doesn't exist
+            print("oldchk file specified but not found")
+            sys.exit(1)
+    elif not os.path.isfile(chk_file):  # if chk file is not present and %oldchk is not specified, clear chk_file
+        chk_file = None
+    return chk_file
+
+def parse_orca_inp(input_file, num_proc_per_node):
+    f = open(input_file,"r")
+    for line in f.readlines():
+        if line.lower().find('nprocs') > -1:
+            try: num_proc_total = int(line.split(' ')[-2])
+            except: pass
+    chk_file = None
+    if num_proc_total % num_proc_per_node != 0:
+        print('Not integer number of nodes for given nproc and total cpus')
+        sys.exit(1)
+
+    num_nodes = num_proc_total / num_proc_per_node
+    return int(num_nodes), chk_file
+
+debug = False
+
+def main():
+    TODAY = datetime.date.today()
+
+    # Start a log for the results
+    log = Logger("QSUB","sub", str(TODAY))
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(nargs = '*', dest = 'input_file')
+    parser.add_argument('-t', '--walltime', type=str, default="23:59:59",
+                        help='Walltime for job in format hh:mm:ss')
+    parser.add_argument('-p', '--partition', type=str, choices=PARTITION_ACCEPT, default=PARTITION_ACCEPT[0],
+                        help='Summit partition to submit job to')
+    parser.add_argument('-q', '--qos', type=str, choices=QOS_ACCEPT, default=QOS_ACCEPT[0],
+                        help='Summit QOS to use for job')
+    parser.add_argument('-a','--account',type=str,choices=ACCOUNTS_LIST,default=ACCOUNTS_LIST[0],help='Account to submit job to')
+    parser.add_argument('-m', '--mail', type=str, choices=MAIL_ACCEPT, help='Send email upon given condition')
+    parser.add_argument('-n', '--nproc', type=int, default=24, help='Number of cpus to use per node')
+    parser.add_argument('--proj', action="store_true", default=False, help='Use a special project account')
+    parser.add_argument('--nnode', type=int, default=1, help='Number of nodes')
+    parser.add_argument('--version', type=str, default='current', help='Request old version of Gaussian [b01 = B.01] or Orca [v401 = 4.0.1, v412 = 4.1.2], v420 = 4.2.0')
+    parser.add_argument('--code', type=str, default='xtb', help='Request crest, xtb, or enso code routines')
+    parser.add_argument('--args', type=str, default='', help='Supply crest, xtb or enso arguments')
+    args = parser.parse_args()
+
+    if debug==True: print(args.input_file)
+
+    log.Write("\n   " + '{:<30} {:>35} {:>10} {:>15}'.format("SUBMITTING TO ACCOUNT", "FILENAME", "nCPU", "WALLTIME"))
+    log.Write("\n"+stars+"")
+
+    for file in args.input_file:
+        abs_path, job_name, file_type = determine_calculation_type(file)
+
+        chk_file = None
+
+        nproc = args.nproc
+        if file_type == 'none':
+            print('Filetype not recognized')
+            sys.exit(1)
+        elif file_type == 'orca':
+            args.nnode, chk_file = parse_orca_inp(file, args.nproc)
+        elif file_type == 'gaussian':
+            chk_file = parse_gaussian_inp(file, args.nproc)
+            #nproc = 24
+
+        account = args.account
+        if args.qos == 'condo': #use rsp account
+            account = ACCOUNTS_LIST[2]
+            print("Condo QOS requested, using {} account".format(account))
+        if args.proj == True:  #use csu22 account
+            account = ACCOUNTS_LIST[1]
+            print("Projects account requested, using {} account".format(account))
+        # use testing partition with testing qos
+        if args.partition == 'shas-testing':
+            args.qos = 'testing'
+        if args.qos == 'testing':
+            args.partition = 'shas-testing'
+
+        #make sure accounts partitions are compatible
+        if account is ACCOUNTS_LIST[0]: #csu-general
+            if args.partition not in PARTITION_ACCEPT[0:6]:
+                err = ('Error: partition {0} cannot be used with account {1}\n'
+                'csu-general may use the following partitions:'.format(args.partition,account))
+                print(err)
+                print(PARTITION_ACCEPT[0:6])
+                sys.exit(1)
+        elif account is ACCOUNTS_LIST[2]: #csu22_summit1
+            if args.partition not in PARTITION_ACCEPT[0:6]:
+                err = ('Error: partition {0} cannot be used with account {1}\n'
+                'csu22_summit1 may use the following partitions:'.format(args.partition,account))
+                print(err)
+                print(PARTITION_ACCEPT[0:6])
+                sys.exit(1)
+        elif account is ACCOUNTS_LIST[1]: #csu-summit-rsp
+            # all partitions and QOS accepted, cannot run condo on ssky, cant run long on ssky-preemptable or ssky-csu-rsp
+            if args.partition in PARTITION_ACCEPT[5:] and args.qos is 'condo':
+                err = 'Error: qos {0} not available on ssky nodes\n'.format(args.qos)
+                print(err)
+                sys.exit(1)
+            if args.partition in PARTITION_ACCEPT[6:] and args.qos is 'long':
+                err = ('Error: qos {0} not available on {1} partition\n'
+                '\tOnly "normal" qos may be used on this partition.'.format(args.qos,args.partition))
+                print(err)
+                sys.exit(1)
+
+        generate_bash_script(abs_path, job_name, file_type, args.walltime, args.partition, args.qos, args.mail, args.nnode, nproc, chk_file, account, args.version, args.code, args.args)
+        log.Write("\n   " + '{:<30} {:>35} {:>10} {:>15}'.format(account, file, nproc,  args.walltime))
+        log.Write("\n"+stars+"\n")
+
+if __name__ == '__main__':
+    main()

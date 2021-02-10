@@ -1,0 +1,14 @@
+#!/bin/bash
+
+PYTHONDIR=/projects/$RSP/PYTHON
+BASEDIR="$PWD"
+
+# Declare an array of string with type
+declare -a StringArray=('DBSTEP' 'CASCADE' 'pyQRC' 'pyDFTD3' 'Kinisot' 'Sterimol' 'wSterimol' 'GoodVibes')
+
+for prog in "${StringArray[@]}"; do
+  # autoupdate python
+  cd $PYTHONDIR'/'$prog'/'
+  git pull origin master
+  cd $BASEDIR
+done

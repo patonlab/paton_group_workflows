@@ -1,0 +1,136 @@
+test_dir='/projects/rpaton@colostate.edu/bin/EXAMPLE_JOBS'
+echo -e '   TESTING YOUR ACCESS TO COMMON SCRIPTS & LIBRARIES'
+
+if [ $# -eq 0 ]
+  then
+    echo "x  No arguments supplied"
+    echo "   Specify test no. (01, 02 etc) or 'all'"
+    test='none'
+fi
+
+if [ $# -ne 0 ]
+  then
+    test=$1
+    echo "o  Runnning test jobs for" $test
+fi
+
+echo -e '\n   ENTERING TEST JOBS'
+# Submit Gaussian 16 job 
+# This request 24 CPUs using Intel Skylake nodes and the group's priority Condo queue with a walltime of 5 minutes
+# For more options see 'qsub_summit --help'
+if [ "$test" == "01" ] || [ "$test" == "all" ]; then
+if [ ! -d "./example_01" ]
+  then
+    mkdir example_01
+fi
+cd example_01
+cp $test_dir/example_01/gauss_example.com .
+qsub_summit gauss_example.com -n 4 -q condo -p ssky -t 05:00:00
+cd ..
+fi
+
+# Submit Orca job 
+# Requests 12 CPUs and 1 hour walltime using Condo allocation on (default) Intel Haswell nodes on Summit
+if [ "$test" == "02" ] || [ "$test" == "all" ]; then
+if [ ! -d "./example_02" ]
+  then 
+    mkdir example_02
+fi
+cd example_02
+cp $test_dir/example_02/orca_example.inp .
+qsub_summit orca_example.inp -n 12 -q condo -t 01:00:00
+cd ..
+fi
+
+# NCIPLOT analysis
+# This requires a regular Gaussian input file prepared in the usual way. 
+# The NCI analysis is done inside a radius about the center-of-mass. The output 
+# will be two cube files and an xyz file, which can be visualized in Pymol
+# N.B. This script requires that your $PYTHONPATH sees GoodVibes
+if [ "$test" == "03" ] || [ "$test" == "all" ]; then
+if [ ! -d "./example_03" ]
+  then
+    mkdir example_03
+fi
+cd example_03
+cp $test_dir/example_03/nci_example.com .
+ncisub_summit nci_example.com -n 12 --radius 4 -q condo -p ssky -t 0:30:00
+cd ..
+fi
+
+# COSMO-RS
+# This will take a collection of Gaussian output files and perform a solvation analysis with COSMO-RS
+# --solv is the filename of the solvent (without the .log/.out). By default, if not specfied, the first species is assum
+#ed to be the solvent. 
+if [ "$test" == "04" ] || [ "$test" == "all" ]; then
+if [ ! -d "./example_04" ]
+  then
+    mkdir example_04
+fi
+cd example_04
+cp $test_dir/example_04/*log .
+qcosmo_summit *log -n 4 -t 01:0:0 -q condo --cosmo 'tc=80 Henry=1 GSOLV' --solv dcm
+cd ..
+fi
+
+# TeraChem
+# This will run a TeraChem Job (the keywords are in terachem_example.sp)
+# Important: it will only work on a GPU node (sgpu partition) and there is not much point requesting less than 24 CPUs
+# In general, try to use non-hybrid functionals (e.g. BLYP or B97) and basis-sets without polarization
+if [ "$test" == "05" ] || [ "$test" == "all" ]; then
+if [ ! -d "./example_05" ]
+  then
+    mkdir example_05
+fi
+cd example_05
+cp $test_dir/example_05/terachem_example.sp .
+qsub_summit terachem_example.sp -p sgpu -t 1:00:00 -n 24
+cd ..
+fi
+
+# XTB
+# Optimizes an XYZ structure file using Grimme's XTB code 
+if [ "$test" == "06" ] || [ "$test" == "all" ]; then
+if [ ! -d "./example_06" ]
+  then
+    mkdir example_06
+fi
+cd example_06
+cp $test_dir/example_06/xtb_example.xyz .
+qsub_summit xtb_example.xyz --code xtb --args '--opt tight --chrg 0 -g chcl3' -q condo -t 0:5:00 -n 24 
+cd ..
+fi
+
+# CREST
+# Performs a metadynamics conformational search on an XYZ structure file at the GFN-xTB level of theory
+if [ "$test" == "07" ] || [ "$test" == "all" ]; then
+if [ ! -d "./example_07" ]
+  then
+    mkdir example_07
+fi
+cd example_07
+cp $test_dir/example_07/crest_example.xyz .
+qsub_summit crest_example.xyz --code crest --args '-g THF' -n 24 -q condo -t 3:00:00
+cd ..
+fi
+
+# TURBOMOLE
+# Performs geometry optimizations for a number of molecules which are present as either *xyz or gaussian output files
+# The level of theory is TPSS-D3BJ/def2-TZVP
+# Turbomole prefers multiple single-processor jobs, so is best used when you have lots of structures that parallelize across the CPUs. 
+# N.B. for this reason, if you have e.g. 8 structures, there is no point setting nCPU larger than 8 
+# This can be altered if required although speak to RSP first
+if [ "$test" == "08" ] || [ "$test" == "all" ]; then
+if [ ! -d "./example_08" ]
+  then
+    mkdir example_08
+fi
+cd example_08
+cp $test_dir/example_08/*xyz .
+qtmol_summit *.xyz -n 8 -q condo -t 0:10:00
+cd ..
+fi
+
+echo -e '\n   END OF SUBMISSION'
+echo -e '\n   TO CHECK ON RUNNING or QUEUED JOBS, try: qstat_summit -u $USER'
+

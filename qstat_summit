@@ -1,0 +1,267 @@
+#!/usr/bin/python
+
+from __future__ import print_function
+import argparse, os, subprocess, sys, time 
+from optparse import OptionParser
+import datetime as DT
+from datetime import datetime
+
+# THIS SHOULD NOT BE CHANGED
+GROUP = 'rpatongrp@colostate.edu'
+DIRS = ['home', 'projects']
+
+# THESE SHOULD BE UPDATED PERIODICALLY 
+accounts_list = ['csu-general','csu-summit-rsp', 'csu22_summit1']
+cpu_list = ['shas', 'ssky']
+
+# Generate a list of group users
+getent = subprocess.Popen('getent group '+GROUP, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+stdout = getent.communicate()[0]
+USERS = stdout.rstrip().split(':')[3:][0].split(',')
+
+# Print formatting
+stars = "   " + "*" * 93
+
+# Enables output to terminal and to text file
+class Logger:
+   def __init__(self, filein, suffix, append):
+      if os.path.exists(filein+"_"+append+"."+suffix): self.log = open(filein+"_"+append+"."+suffix, 'a' )
+      else: self.log = open(filein+"_"+append+"."+suffix, 'w' )
+
+   def Write(self, message):
+      print(message, end='')
+      self.log.write(message)
+
+   def Fatal(self, message):
+      print(message+"\n")
+      self.log.write(message + "\n"); self.Finalize()
+      sys.exit(1)
+
+   def Finalize(self):
+      self.log.close()
+
+
+# Check how much space in personal directories
+def disk_space(log, USERS, DIRS):
+        log.Write("\n   " + '{:<51} {:>20} {:>20}'.format("DISK AVAILABLE", "/"+DIRS[0]+"/$USER", "/"+DIRS[1]+"/$USER"))
+        log.Write("\n"+stars)
+	for USER in USERS:
+        	available = []
+		for dir in DIRS:
+			df = subprocess.Popen('df -h /'+dir+'/'+USER, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+			contents = df.communicate()[0]
+			avail = contents.split()[11]
+			available.append(avail)
+
+		log.Write("\n   " + '{:<51} {:>20} {:>20}'.format(USER.split('@')[0], str(available[0]), str(available[1])))
+	log.Write("\n"+stars+"\n")
+
+
+# List queued jobs by name
+def q_list(log, USERS, accounts_list, cpu_list, today, days):
+
+        PREV_DATE = str(today - DT.timedelta(days=days))
+
+        job_list = []
+        n_q = []
+        for i, USER in enumerate(USERS):
+           for j, ac in enumerate(accounts_list): 
+                n_q.append(0)
+                queue = subprocess.Popen('squeue --start --accounts '+ac+' -u '+USER, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+                contents = queue.communicate()[0]
+                for content in contents.splitlines():
+                         username = USER.split('@')[0]
+                         if content.find(username) > -1:
+                                 #print(content)
+                                 pid, partition, name, start = content.split()[0], content.split()[1], content.split()[2], content.split()[5]
+                                 job_list.append([USER.split('@')[0],pid, partition, name, start, ac])
+                                 n_q[i] += 1    
+        if len(job_list) != 0:
+                log.Write("\n   " + '{:<10} {:>20} {:>20} {:>20} {:>19}'.format("USER", "ACCOUNT", "PARTITION", "JOBNAME", "STARTING IN H:M"))
+                log.Write("\n"+stars)
+                for job in job_list:
+                         waiting = 'N/A'
+                         start_time = job[4].replace('T', ' ').split()
+                         if len(start_time) > 1:
+                                  [start_y, start_m, start_d] = start_time[0].split('-') 
+                                  [start_hour, start_min, start_sec] = start_time[1].split(':')
+                                  job_start = DT.datetime(year=int(start_y), month=int(start_m), day=int(start_d), hour=int(start_hour), minute=int(start_min), second=int(start_sec))
+                                  wait_time = job_start - DT.datetime.now()
+                                  days, seconds = wait_time.days, wait_time.seconds
+                                  hours, minutes = days * 24 + seconds // 3600, (seconds % 3600) // 60
+                                  waiting = str(hours).zfill(2)+':'+str(minutes).zfill(2)
+                                  #print('wait', hours, minutes)
+                         log.Write("\n   " + '{:<10} {:>20} {:>20} {:>20} {:>19}'.format(job[0], job[-1], job[2], job[3], waiting))
+                log.Write("\n"+stars+"\n")
+
+        log.Write("\n   " + '{:<20} {:>72}'.format("USER", "JOBS QUEUED"))
+        log.Write("\n"+stars)
+        for i, USER in enumerate(USERS):
+                log.Write("\n   " + '{:<20} {:>72}'.format(USER.split('@')[0], n_q[i]))
+        log.Write("\n"+stars+"\n")
+
+# List running jobs by name
+def job_list(log, USERS, accounts_list, cpu_list, today, days):
+
+        PREV_DATE = str(today - DT.timedelta(days=days))
+
+        log.Write("\n   " + '{:<12} {:>18} {:>20} {:>20} {:>19}'.format("CPUs IN USE", accounts_list[0], accounts_list[1], accounts_list[2], 'All'))
+        log.Write("\n"+stars)
+
+        total_running = [0,0,0,0]
+        for USER in USERS:
+                running = [0,0,0,0]
+                jobs = subprocess.Popen('sacct --starttime '+PREV_DATE+' --format="'"JobID,JobName%30,Partition,Account%30,AllocCPUS,State,elapsed"'" --user '+USER, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                contents = jobs.communicate()[0]
+                for content in contents.splitlines():
+                        for i, ac in enumerate(accounts_list):
+                                for cpu in cpu_list:
+                                        for status in ['RUNNING']:
+                                                if content.find(status) > -1 and content.find(ac) > -1 and content.find(cpu) > -1:
+                                                        pid, nprocs = content.split()[0], int(content.split()[4])
+                                                        try:
+                                                                calc_time = time.strptime(content.split()[6], "%H:%M:%S")
+                                                        except ValueError:
+                                                                calc_time = time.strptime(content.split()[6], "%d-%H:%M:%S")
+
+                                                        #print(USER+':', i, ac, status, cpu, nprocs, calc_time)
+                                                        #print(more_time)
+                                                        running[i] += nprocs; running[-1] += nprocs
+
+                #running[2] = running[0] = running[1]
+                #print("RUNNING:", running)
+                username = USER.split('@')[0]                             
+                log.Write("\n   " + '{:<10} {:>20} {:>20} {:>20} {:>19}'.format(username, running[0], running[1], running[2], running[3]))
+                total_running[0] += running[0]; total_running[1] += running[1]; total_running[2] += running[2]; total_running[3] += running[3]
+
+        log.Write("\n"+stars+"")
+
+        if len(USERS) > 1:
+                log.Write("\n   " + '{:<20} {:>10} {:>20} {:>20}'.format("RSP GROUP TOTAL", total_running[0], total_running[1], total_running[2]))
+                log.Write("\n"+stars+"")
+        log.Write("\n")
+
+
+	job_list, pending_list = [], []
+        for USER in USERS:
+                jobs = subprocess.Popen('sacct --starttime '+PREV_DATE+' --format="'"JobID,JobName%30,Partition,Account%30,AllocCPUS,State,elapsed"'" --user '+USER, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                contents = jobs.communicate()[0]
+                for content in contents.splitlines():
+                        for i, ac in enumerate(accounts_list):
+                                for cpu in cpu_list:
+                                        for status in ['RUNNING']:
+                                                if content.find(status) > -1 and content.find(ac) > -1 and content.find(cpu) > -1:
+                                                        pid, name, partition, nprocs = content.split()[0], content.split()[1], content.split()[2], int(content.split()[4])
+                                                        job_list.append([USER.split('@')[0],ac, pid, name, status, cpu, nprocs, partition])
+
+	if len(job_list) != 0:
+	        log.Write("\n   " + '{:<10} {:>20} {:>20} {:>30} {:>9}'.format("USER", "ACCOUNT", "PARTITION", "RUNNING JOBS", "PID"))
+        	log.Write("\n"+stars)
+
+		for ac in accounts_list:
+			 for job in job_list:
+				if job[1] == ac:
+					log.Write("\n   " + '{:<10} {:>20} {:>20} {:>30} {:>9}'.format(job[0], job[1], job[7], job[3], job[2]))
+        	log.Write("\n"+stars+"\n")
+
+
+# Check on jobs
+def check_jobs(log, USERS, accounts_list, cpu_list, today, days, verbose): 
+        log.Write("\n   " + '{:<19} {:>11} {:>20} {:>20} {:>19}'.format("CPU Hrs: "+str(days)+" DAYS", accounts_list[0], accounts_list[1], accounts_list[2], 'All'))
+        log.Write("\n"+stars)
+
+	PREV_DATE = str(today - DT.timedelta(days=days))
+
+	total_elapsed_hours = [0,0,0,0]
+	for USER in USERS:
+		completed = [datetime(year=1, month=1, day=1), datetime(year=1, month=1, day=1),datetime(year=1, month=1, day=1),datetime(year=1, month=1, day=1)]
+		jobs = subprocess.Popen('sacct --starttime '+PREV_DATE+' --format="'"JobID,JobName%30,Partition,Account%30,AllocCPUS,State,elapsed"'" --user '+USER, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        	contents = jobs.communicate()[0]
+		for content in contents.splitlines():
+		 	for i, ac in enumerate(accounts_list):
+				for cpu in cpu_list:
+					for status in ['COMPLETED', 'FAILED', 'CANCELLED', 'TIMEOUT']:
+						if content.find(status) > -1 and content.find(ac) > -1 and content.find(cpu) > -1:
+							job = content.split()
+							pid, nprocs = job[0], int(job[4])
+							if verbose:
+								if len(USERS) > 1: log.Write("\n   " + '{:<35} {:>33} {:>11} {:>4} {:>6}'.format(job[3]+';'+USER.split('@')[0], job[1], job[6], job[4], job[2]))
+                        			                else: log.Write("\n   " + '{:<35} {:>33} {:>11} {:>4} {:>6}'.format(job[3], job[1], job[6], job[4], job[2]))
+							try:
+								calc_time = time.strptime(content.split()[6], "%H:%M:%S")
+							except ValueError:
+								calc_time = time.strptime(content.split()[6], "%d-%H:%M:%S")
+
+							#print(USER+':', i, ac, pid, status, cpu, nprocs, calc_time)
+							more_time = DT.timedelta(days=calc_time.tm_wday*nprocs, hours=calc_time.tm_hour*nprocs, minutes=calc_time.tm_min*nprocs, seconds=calc_time.tm_sec*nprocs)
+							#print(more_time)
+							completed[i] += more_time
+
+		#print("COMPLETED:", completed)
+		elapsed_hours = []
+		for complete in completed: elapsed_hours.append(int(round((complete - datetime(year=1, month=1, day=1)).total_seconds() / 3600.0)))
+                elapsed_hours[-1] = elapsed_hours[0] + elapsed_hours[1] + elapsed_hours[2]
+		log.Write("\n   " + '{:<10} {:>20} {:>20} {:>20} {:>19}'.format(USER.split('@')[0], elapsed_hours[0], elapsed_hours[1], elapsed_hours[2], elapsed_hours[-1]))
+		total_elapsed_hours[0] += elapsed_hours[0]; total_elapsed_hours[1] += elapsed_hours[1]; total_elapsed_hours[2] += elapsed_hours[2]; total_elapsed_hours[3] += elapsed_hours[3]
+
+
+	if len(USERS) > 1:
+		log.Write("\n"+stars+"")
+                log.Write("\n   " + '{:<20} {:>10} {:>20} {:>20} {:>19}'.format("RSP GROUP TOTAL", total_elapsed_hours[0], total_elapsed_hours[1], total_elapsed_hours[2], total_elapsed_hours[3]))
+
+	log.Write("\n"+stars+"\n")
+# Check on queue privileges
+def check_fairshare(log, USERS, accounts_list):
+        log.Write("\n   " + '{:<30} {:>20} {:>20}'.format("QUEUE FAIRSHARE", accounts_list[0], accounts_list[1]))
+        log.Write("\n"+stars)
+	for USER in USERS:
+		status = []
+		for ac in accounts_list:
+        		sshare = subprocess.Popen('sshare --accounts '+ac+' -u '+USER+' -l -U', shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        		fairshare = sshare.communicate()[0].split()[-2]
+                        try: status.append(float(fairshare))
+                        except: status.append(0.0)
+                log.Write("\n   " + '{:<30} {:20.2f} {:20.2f}'.format(USER.split('@')[0], status[0], status[1]))
+        log.Write("\n"+stars+"\n")
+
+
+
+def main():
+
+   TODAY = DT.date.today()
+   
+   # Start a log for the results
+   log = Logger("QSTAT","dat", str(TODAY))
+
+   # get command line inputs. Use -h to list all possible arguments and default values
+   parser = OptionParser(usage="Usage: %prog [options] ...")
+   parser.add_option("-u", dest="user", action="store", help="Summit Username (optional = defaults to whole group)", default=False, type="string", metavar="USER")
+   parser.add_option("--disk", dest="disk", action="store_true", help="Show available disk space", default=False, metavar="DISK")
+   parser.add_option("--history", dest="jobs", action="store_true", help="Show completed job info", default=False, metavar="JOBS")
+   parser.add_option("-q", dest="queue", action="store_true", help="Show jobs in the queue", default=False, metavar="QUEUE")
+   parser.add_option("--fs", dest="fs", action="store_true", help="Show queue fairshare into", default=False, metavar="FS")
+   parser.add_option("-t", dest="days", action="store", help="How many days worth of info", default=7, type="int", metavar="TIME")
+   parser.add_option("-j", "--jobs", dest="list", action="store_true", help="list running jobs", default=False, metavar="LIST")
+   parser.add_option("-v", dest="verbose", action="store_true", help="verbose printing of completed jobs", default=False, metavar="VERBOSE")
+
+   (options, args) = parser.parse_args()
+
+   if options.user != False:
+      if options.user.find('@') == -1: options.user = options.user+'@colostate.edu'
+      if options.user not in USERS: 
+         print(options.user, "not found!"); sys.exit()
+
+   if options.user != False:
+      NEW_USERS = [x for x in USERS if x==options.user]
+   else: NEW_USERS = USERS
+   
+   if options.disk != False: disk_space(log, NEW_USERS, DIRS)
+   if options.jobs !=False: check_jobs(log, NEW_USERS, accounts_list, cpu_list, TODAY, options.days, options.verbose)
+   if options.list !=False: job_list(log, NEW_USERS, accounts_list, cpu_list, TODAY, options.days)
+   if options.queue !=False: q_list(log, NEW_USERS, accounts_list, cpu_list, TODAY, options.days)
+   if options.fs != False: check_fairshare(log, NEW_USERS, accounts_list)
+
+if __name__ == "__main__":
+    main()
+

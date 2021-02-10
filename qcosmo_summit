@@ -1,0 +1,340 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+from __future__ import print_function
+
+"""
+Submit script for CU Summit cluster. Generates and submits bash scripts for standard programs
+@author: jake
+"""
+
+import argparse
+import datetime
+from glob import glob
+import os
+import sys
+import time
+import re
+from decimal import Decimal
+import subprocess
+
+license_txt=('\'ISV cosmologic'  
+'\n\\n# creation date=2019-02-01' 
+'\n\\nLICENSE cosmologic info 1.0 permanent uncounted hostid=ANY'
+'\n\\n  issuer=Cosmologic customer="Colorado State University, Department of'
+'\n\\n   Chemistry" contract=108130 _ck=341efce35e sig="60Q04580PSFJT001X3M5'
+'\n\\n  RX8H94N6PS9FRDJ4QFV108AG153ECS70QPD61ATKNVERHG2EDCHBQM2YE"'
+'\n\\nLICENSE cosmologic cosmotherm 19.0 02-feb-2021 uncounted hostid=ANY'
+'\n\\n  start=27-mar-2018 _ck=e61eca325a sig="60PG453KYSFY179B83C1UDJXW6HD52'
+'\n\\n  PPH34J4G822M080W1PX0XYH9HE58VUWCK4HVU5KV7J33JG"'
+'\n\\n# admin=Prof. Dr. Robert Paton licensee=Prof. Dr. Robert Paton license id=LIC20183994' 
+'\n\\nLICENSE cosmologic turbomole 7.3 02-feb-2021 uncounted hostid=ANY'
+'\n\\n  start=27-mar-2018 platforms="x86_l x64_l" _ck=4e1e481c2f sig="60PG45'
+'\n\\n  80G3J6CYFWU5VX9RV23A6MUG0NQM8ARRSF08A58ACP6M9545SMFDPB8SV5CK6CHSKB2V'
+'\n\\n  WG"'
+'\n\\n# admin=Prof. Dr. Robert Paton licensee=Prof. Dr. Robert Paton license id=LIC20183995' 
+'\n\\nLICENSE cosmologic cosmoconf 4.3 02-feb-2021 uncounted hostid=ANY'
+'\n\\n  start=27-mar-2018 _ck=391eca6733 sig="60NG44UD69PJB40W8WRJK54VR7TAEB'
+'\n\\n  277AHUR0GM6XBGHBAKAH93EUUG91F3XM3RXQPJMNCQ"'
+'\n\\n# admin=Prof. Dr. Robert Paton licensee=Prof. Dr. Robert Paton license id=LIC20183996\'')
+
+previous_license_txt=('\'ISV cosmologic'  
+'\n\\n# creation date=2018-03-27' 
+'\n\\nLICENSE cosmologic info 1.0 permanent uncounted hostid=ANY'
+'\n\\n  issuer=Cosmologic customer="Colorado State University, Department of'
+'\n\\n   Chemistry" contract=108130 _ck=341efc5f61 sig="60P04535EJF1YQ8US13G'
+'\n\\n  62WDFGXKNVSWKNXRXK822H2B4PKEB50N6PRC16H0BCKWPEAR66C4RG"'
+'\n\\nLICENSE cosmologic cosmotherm 18.0 28-mar-2020 uncounted hostid=ANY'
+'\n\\n  start=27-mar-2018 _ck=ff1ecadeef sig="60P0452DRJACEMFNXCGBJV3ARVU9YP'
+'\n\\n  6V8FK309R22GGBKV7AXVKWX2S0S15A8XJ43DQEQD04TM"'
+'\n\\n# admin=Prof. Dr. Robert Paton licensee=Prof. Dr. Robert Paton license id=LIC20183994' 
+'\n\\nLICENSE cosmologic turbomole 7.2 28-mar-2020 uncounted hostid=ANY'
+'\n\\n  start=27-mar-2018 platforms="x86_l x64_l" _ck=671e4872d8 sig="60P045'
+'\n\\n  2XHD6J5Y9VXR3YGCN25VUCMYMTGR1MFE022GTEFY62P3JCAG5P1W4YG6TSBWAFKKWGXG'
+'\n\\n  "'             
+'\n\\n# admin=Prof. Dr. Robert Paton licensee=Prof. Dr. Robert Paton license id=LIC20183995' 
+'\n\\nLICENSE cosmologic cosmoconf 4.2 28-mar-2020 uncounted hostid=ANY'
+'\n\\n  start=27-mar-2018 _ck=521eca2c56 sig="60PG4580G9YNNG4QK07WYYJSS12P4A'
+'\n\\n  DM8SGB6MQG08A17531JXM1PQK8WCTTYEGJPEH19N5MEP8G"'
+'\n\\n# admin=Prof. Dr. Robert Paton licensee=Prof. Dr. Robert Paton license id=LIC20183996\'')
+
+ACCOUNTS_LIST = ['csu-general','csu8_summit1','csu-summit-rsp']
+PARTITION_ACCEPT = ['shas', 'sgpu', 'smem', 'sknl', 'ssky']
+QOS_ACCEPT = ['normal', 'debug', 'long', 'condo']
+MAIL_ACCEPT = ['END', 'BEGIN', 'FAIL', 'ALL']
+
+#Some useful arrays
+periodictable = ["","H","He","Li","Be","B","C","N","O","F","Ne","Na","Mg","Al","Si","P","S","Cl","Ar","K","Ca","Sc","Ti","V","Cr","Mn","Fe","Co","Ni","Cu","Zn","Ga","Ge","As","Se","Br","Kr","Rb","Sr","Y","Zr",
+    "Nb","Mo","Tc","Ru","Rh","Pd","Ag","Cd","In","Sn","Sb","Te","I","Xe","Cs","Ba","La","Ce","Pr","Nd","Pm","Sm","Eu","Gd","Tb","Dy","Ho","Er","Tm","Yb","Lu","Hf","Ta","W","Re","Os","Ir","Pt","Au","Hg","Tl",
+    "Pb","Bi","Po","At","Rn","Fr","Ra","Ac","Th","Pa","U","Np","Pu","Am","Cm","Bk","Cf","Es","Fm","Md","No","Lr","Rf","Db","Sg","Bh","Hs","Mt","Ds","Rg","Uub","Uut","Uuq","Uup","Uuh","Uus","Uuo"]
+
+def elementID(massno):
+        if massno < len(periodictable): return periodictable[massno]
+        else: return "XX"
+
+
+# Print formatting
+stars = "   " + "*" * 93
+
+# Enables output to terminal and to text file
+class Logger:
+   def __init__(self, filein, suffix, append):
+      if os.path.exists(filein+"_"+append+"."+suffix): self.log = open(filein+"_"+append+"."+suffix, 'a' )
+      else: self.log = open(filein+"_"+append+"."+suffix, 'w' )
+
+   def Write(self, message):
+      print(message, end='')
+      self.log.write(message)
+
+   def Fatal(self, message):
+      print(message+"\n")
+      self.log.write(message + "\n"); self.Finalize()
+      sys.exit(1)
+
+   def Finalize(self):
+      self.log.close()
+
+def valid_walltime(s):
+    try:
+        return time.strptime(s, "%H:%M:%S")
+    except ValueError:
+        msg = "Not a valid date: '{0}'.".format(s)
+        raise argparse.ArgumentTypeError(msg)
+
+
+class getoutData:
+    def __init__(self, file):
+
+        if not os.path.exists(file):
+            print(("\nFATAL ERROR: Output file [ %s ] does not exist"%file))
+
+        def getFORMAT(self, outlines):
+            for i in range(0,len(outlines)):
+                if outlines[i].find("Gaussian") > -1: self.FORMAT = "Gaussian"; break
+                if outlines[i].find("MOPAC") > -1: self.FORMAT = "Mopac"; break
+
+        def getCHARGE(self, outlines, format):
+            if format == "Gaussian":
+                for i in range(0,len(outlines)):
+                    if outlines[i].find("Charge = ") > -1:
+                        self.CHARGE = int(outlines[i].split()[2])
+                        self.MULT = int(outlines[i].split()[5].rstrip("\n"))
+                        break
+            if format == "Mopac":
+                self.CHARGE = 0
+                #ideally add up all the atomic charges here?
+                self.MULT =  1
+
+        def getATOMTYPES(self, outlines, format):
+            self.ATOMTYPES = []
+            self.CARTESIANS = []
+            self.ATOMICTYPES = []
+            if format == "Gaussian":
+                anharmonic_geom=0
+                for i in range(0,len(outlines)):
+                    if outlines[i].find("Input orientation") > -1:
+                        standor = i #; print("standor", standor)
+                    if outlines[i].find("Standard orientation") > -1:
+                        standor = i #; print("standor", standor)
+                    if outlines[i].find("Vib.Av.Geom.") > -1:
+                        standor = i #; print("standor", standor)
+                        anharmonic_geom=1
+                    if outlines[i].find("Distance matrix") > -1 or outlines[i].find("Rotational constants") >-1:
+                        if outlines[i-1].find("-------") > -1:
+                            self.NATOMS = i-standor-6
+                            #print("NATOMS", self.NATOMS)
+                try: standor
+                except NameError: pass
+                else:
+                    for i in range (standor+5,standor+5+self.NATOMS):
+                        self.ATOMTYPES.append(elementID(int(outlines[i].split()[1])))
+                        self.ATOMICTYPES.append(int(outlines[i].split()[2]))
+
+                        if anharmonic_geom==0:
+                            if len(outlines[i].split()) > 5: self.CARTESIANS.append([float(outlines[i].split()[3]),float(outlines[i].split()[4]),float(outlines[i].split()[5])])
+                            else: self.CARTESIANS.append([float(outlines[i].split()[2]),float(outlines[i].split()[3]),float(outlines[i].split()[4])])
+                        if anharmonic_geom==1:self.CARTESIANS.append([float(outlines[i].split()[2]),float(outlines[i].split()[3]),float(outlines[i].split()[4])])
+
+            if format == "Mopac":
+                        for i in range(0,len(outlines)):
+                                #if outlines[i].find("TOTAL ENERGY") > -1: #Get the energy (convert from eV to Hartree)
+                                #   energy=(float(line.split()[3]))
+                                #    energy=energy*0.036749309
+                                if outlines[i].find("CARTESIAN COORDINATES") > -1: startgeom = i+4
+                                if outlines[i].find("ATOMIC ORBITAL ELECTRON POPULATIONS") > -1: endgeom = i-2; break
+                                #if outlines[i].find("TOTAL CPU TIME") > -1:
+                                #    time=[0.0,0.0,0.0,float(line.split()[3])]
+                        self.NATOMS = endgeom - startgeom
+                        for i in range (startgeom,endgeom):
+                            self.ATOMTYPES.append(outlines[i].split()[1])
+                            self.CARTESIANS.append([float(outlines[i].split()[2]),float(outlines[i].split()[3]),float(outlines[i].split()[4])])
+
+
+        if os.path.exists(file): outfile = open(file,"r")
+
+        outlines = outfile.readlines()
+        getFORMAT(self, outlines)
+        getCHARGE(self, outlines, self.FORMAT)
+        getATOMTYPES(self, outlines, self.FORMAT)
+        #print "\nSuccessfully read geometry output", file
+
+class writeXYZinput:
+        def __init__(self, file, MolSpec, XYZDIR, MOLLIST):
+            if not os.path.isdir(XYZDIR): os.makedirs(XYZDIR)
+            if os.path.exists(MOLLIST): mol_list = open(MOLLIST, 'a')
+            else: mol_list = open(MOLLIST, 'w')
+
+            mol_list.write(os.path.splitext(file)[0]+' '+str(MolSpec.CHARGE)+"\n")
+ 
+            newfile = os.path.splitext(file)[0]
+            outfile = XYZDIR+'/'+newfile+'.xyz'
+            #print("   ", file, ">>", outfile)
+            fileout = open(outfile, "w")
+            fileout.write(str(len(MolSpec.ATOMTYPES))+'\n') 
+            fileout.write(os.path.splitext(file)[0]+' '+str(MolSpec.CHARGE)+"\n")
+            for i in range(0,MolSpec.NATOMS):
+                    fileout.write(MolSpec.ATOMTYPES[i])
+                    for j in range(0,3):
+                            fileout.write("  "+str(Decimal(str((MolSpec.CARTESIANS[i][j])))))
+                    fileout.write("\n")
+            fileout.write("\n")
+
+
+class writeCOSMOinput:
+        def __init__(self, files, MolSpec,  cosmo_file, command, solv_file):
+            cosmo_input = open(cosmo_file+'.inp', 'w')
+            cosmo_input.write('ctd=BP_TZVPD_FINE_19.ctd CDIR=/projects/rpaton@colostate.edu/turbomole/COSMOlogic/COSMOthermX19/COSMOtherm/CTDATA-FILES LDIR=./\n')
+            cosmo_input.write('FDIR=./CosmofilesBP-TZVPD-FINE-COSMO-SP Efile\n')
+            cosmo_input.write('! Automatic Free Energy of solvation computation                      # Comment line\n')
+
+	    for file in files:
+		if os.path.splitext(file)[0] == solv_file:
+			cosmo_input.write('f='+os.path.splitext(file)[0]+' '+str(MolSpec.CHARGE)+"\n")
+	    for file in files:
+                if os.path.splitext(file)[0] != solv_file:
+                	cosmo_input.write('f='+os.path.splitext(file)[0]+' '+str(MolSpec.CHARGE)+"\n")
+	
+            cosmo_input.write(command+'\n')
+
+
+def generate_bash_script(abs_path, job_name, walltime, partition, qos, mail, nodes, nproc, account, mol_list, xyz_file):
+    bash_text = '#!/bin/bash\n'
+    if account != "csu-general": bash_text += '#SBATCH --account=' + account + '\n'
+    if qos == "normal" and int(walltime.split(':')[0]) > 24: print("WARNING: too many hours requested for qos = normal"); sys.exit()
+    if qos == "condo" and int(walltime.split(':')[0]) > 168: print("WARNING: too many hours requested for qos = condo"); sys.exit()
+    bash_text += '#SBATCH -J ' + job_name + '\n'
+    bash_text += '#SBATCH -p ' + partition + '\n'
+    bash_text += '#SBATCH --qos ' + qos + '\n'
+    bash_text += '#SBATCH -t ' + walltime + '\n'
+    bash_text += '#SBATCH -N {0}\n'.format(nodes)
+    bash_text += '#SBATCH --export=NONE\n'
+    if nproc > 1:
+        bash_text += '#SBATCH --ntasks-per-node {0}\n'.format(nproc)
+    if mail is not None:
+        bash_text += '#SBATCH --mail-type=' + mail + '\n'
+        bash_text += '#SBATCH --mail-user=' + os.environ['USER'] + '\n'
+    bash_text += '\n'
+
+    bash_text += generate_cosmo_script(job_name, nproc, mol_list, xyz_file)
+
+    sub_script = abs_path + '/' + job_name + '.sh'
+    with open(sub_script, 'w') as f:
+        f.write(bash_text)
+
+    ## This is for automated submission using sbatch
+    command = "sbatch "+sub_script+" > /dev/null"
+    retcode = subprocess.call(command, shell=True)
+
+
+def generate_cosmo_script(job_name, nproc, mol_list, xyz_file):
+    bash_text = 'license_txt='
+    bash_text += license_txt
+    
+    bash_text += ('\n'
+                  '\n#set the names of the text file (list of molecules and their charge) and the directory containing xyz coordinates\n'
+                   'mols='+mol_list+'\n'
+                   'xyzdir='+xyz_file+'\n'
+                   'nproc='+str(nproc)+'\n\n'
+                   '$TURBODIR/calculate_3.0_linux64/calculate -l $mols -m BP-TZVP-GAS -din $xyzdir -f xyz -np $nproc > tmol_calc.log\n'
+                   '$TURBODIR/calculate_3.0_linux64/calculate -l $mols -m BP-TZVPD-GAS-SP -din EnergyfilesBP-TZVP -f energy -np $nproc >> tmol_calc.log\n'
+                   '$TURBODIR/calculate_3.0_linux64/calculate -l $mols -m BP-TZVP-COSMO -din $xyzdir -f xyz -np $nproc >> tmol_calc.log\n'
+                   '$TURBODIR/calculate_3.0_linux64/calculate -l $mols -m BP-TZVPD-FINE-COSMO-SP -din CosmofilesBP-TZVP -f cosmo -np $nproc >> tmol_calc.log\n'
+                   'cp EnergyfilesBP-TZVPD-FINE-COSMO-SP/*.energy CosmofilesBP-TZVPD-FINE-COSMO-SP\n'
+                   '\necho -e $license_txt > ./license.txt\n'
+                   'cosmotherm g_solv.inp\n' 
+                   'rm ./license.txt\n')
+		
+    return bash_text
+
+
+def main():
+    TODAY = datetime.date.today()
+
+    # Start a log for the results
+    log = Logger("QSUB","sub", str(TODAY)) 
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(nargs = '*', dest = 'input_file')
+    parser.add_argument('-t', '--walltime', type=str, default="23:59:59",
+                        help='Walltime for job in format hh:mm:ss (REQUIRED')
+    parser.add_argument('-p', '--partition', type=str, choices=PARTITION_ACCEPT, default=PARTITION_ACCEPT[0],
+                        help='Summit partition to submit job to')
+    parser.add_argument('-q', '--qos', type=str, choices=QOS_ACCEPT, default=QOS_ACCEPT[0],
+                        help='Summit QOS to use for job')
+    parser.add_argument('-m', '--mail', type=str, choices=MAIL_ACCEPT, help='Send email upon given condition')
+    parser.add_argument('-n', '--nproc', type=int, default=24, help='Number of cpus to use per node')
+    parser.add_argument('--proj', action="store_true", default=False, help='Use a special project account')
+    parser.add_argument('--nnode', type=int, default=1, help='Number of nodes')
+    parser.add_argument('--solv', type=str,  help='filename of the solvent')
+    parser.add_argument('--cosmo', action="store", default="tc=25 Henry=1 GSOLV", help='Command for COSMO-RS: e.g. \'tc=80 Henry=1 GSOLV\'')
+
+    xyz_file = 'xyz_files'
+    mol_list = 'mol_list'
+    cosmo_input = 'g_solv'
+    job_name = cosmo_input
+
+    args = parser.parse_args()
+
+    # Get the filenames from the command line prompt
+    files = []
+    if len(sys.argv) > 1:
+        for elem in sys.argv[1:]:
+            try:
+                if os.path.splitext(elem)[1] in [".out", ".log"]:
+                    for file in glob(elem): files.append(file)
+            except IndexError: pass
+
+
+    # Takes arguments: (1) file(s) (2) new job parameters
+    else:
+        print("\nWrong number of arguments used. Correct format: qCOSMO file [job parameters]\n")
+        sys.exit()
+
+    # if no solvent was specified assume it's the first file in the list
+    if args.solv == None: args.solv = os.path.splitext(files[0])[0]
+
+    account = ACCOUNTS_LIST[0]
+    if args.qos == 'condo': account = ACCOUNTS_LIST[2]
+    if args.proj == True: account = ACCOUNTS_LIST[1]
+
+
+    for file in files:
+        MolSpec = getoutData(file)
+        writeXYZinput(file, MolSpec, xyz_file, mol_list)
+        abs_path = os.path.abspath(file)
+        abs_path = os.path.dirname(abs_path)
+
+    log.Write("\n   " + '{:<30} {:>35} {:>10} {:>15}'.format("SUBMITTING TO ACCOUNT", "FILENAME", "nCPU", "WALLTIME"))
+    log.Write("\n"+stars+"")
+
+    writeCOSMOinput(files, MolSpec, cosmo_input, args.cosmo, args.solv)
+
+    generate_bash_script(abs_path, job_name, args.walltime, args.partition, args.qos, args.mail, args.nnode, args.nproc, account, mol_list, xyz_file)
+	
+    log.Write("\n   " + '{:<30} {:>35} {:>10} {:>15}'.format(account, cosmo_input, args.nproc,  args.walltime))
+    log.Write("\n"+stars+"\n")
+
+
+if __name__ == '__main__':
+    main()
+

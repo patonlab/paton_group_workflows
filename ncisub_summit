@@ -1,0 +1,255 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+from __future__ import print_function
+
+"""
+Submit script for CU Summit cluster. Generates and submits bash scripts for standard programs
+@author: jake
+"""
+
+import argparse
+import datetime
+import os
+import sys
+import time
+import re
+import subprocess
+
+ACCOUNTS_LIST = ['csu-general','csu8_summit1','csu-summit-rsp']
+PARTITION_ACCEPT = ['shas', 'sgpu', 'smem', 'sknl', 'ssky']
+QOS_ACCEPT = ['normal', 'debug', 'long', 'condo']
+MAIL_ACCEPT = ['END', 'BEGIN', 'FAIL', 'ALL']
+
+# Print formatting
+stars = "   " + "*" * 93
+
+# Enables output to terminal and to text file
+class Logger:
+   def __init__(self, filein, suffix, append):
+      if os.path.exists(filein+"_"+append+"."+suffix): self.log = open(filein+"_"+append+"."+suffix, 'a' )
+      else: self.log = open(filein+"_"+append+"."+suffix, 'w' )
+
+   def Write(self, message):
+      print(message, end='')
+      self.log.write(message)
+
+   def Fatal(self, message):
+      print(message+"\n")
+      self.log.write(message + "\n"); self.Finalize()
+      sys.exit(1)
+
+   def Finalize(self):
+      self.log.close()
+
+def valid_walltime(s):
+    try:
+        return time.strptime(s, "%H:%M:%S")
+    except ValueError:
+        msg = "Not a valid date: '{0}'.".format(s)
+        raise argparse.ArgumentTypeError(msg)
+
+
+def determine_calculation_type(input_file):
+    abs_path = os.path.abspath(input_file)
+    abs_path = os.path.dirname(abs_path)
+    base_file = os.path.basename(input_file)
+    file_name, extension = os.path.splitext(base_file)
+    if extension == '.com':
+        file_type = 'gaussian'
+    else:
+        file_type = 'none'
+
+    return abs_path, file_name, file_type
+
+
+def generate_bash_script(abs_path, job_name, file_type, walltime, partition, qos, mail, nodes, nproc, chk_file, account):
+    bash_text = '#!/bin/bash\n'
+    if account != "csu-general": bash_text += '#SBATCH --account=' + account + '\n'
+    if qos == "normal" and int(walltime.split(':')[0]) > 24: print("WARNING: too many hours requested for qos = normal"); sys.exit()
+    if qos == "condo" and int(walltime.split(':')[0]) > 168: print("WARNING: too many hours requested for qos = condo"); sys.exit()
+    bash_text += '#SBATCH -J ' + job_name + '\n'
+    bash_text += '#SBATCH -p ' + partition + '\n'
+    bash_text += '#SBATCH --qos ' + qos + '\n'
+    bash_text += '#SBATCH -t ' + walltime + '\n'
+    bash_text += '#SBATCH -N {0}\n'.format(nodes)
+    bash_text += '#SBATCH --export=NONE\n'
+    if nproc > 1:
+        bash_text += '#SBATCH --ntasks-per-node {0}\n'.format(nproc)
+    if mail is not None:
+        bash_text += '#SBATCH --mail-type=' + mail + '\n'
+        bash_text += '#SBATCH --mail-user=' + os.environ['USER'] + '\n'
+    bash_text += '\n'
+
+    bash_text += generate_gaussian_script(job_name, chk_file)
+
+    sub_script = abs_path + '/' + job_name + '.sh'
+    with open(sub_script, 'w') as f:
+        f.write(bash_text)
+
+    ## This is for automated submission using sbatch
+    command = "sbatch "+sub_script+" > /dev/null"
+    retcode = subprocess.call(command, shell=True)
+
+
+def generate_gaussian_script(job_name, chk_file):
+    bash_text = ('g16root="/projects/$RSP"\n'
+                 'export g16root\n'
+                 '. $g16root/g16/bsd/g16.profile\n'
+                 'Sctchpath="/scratch/summit/$USER/$SLURM_JOB_ID"\n'
+                 'mkdir $Sctchpath\n'
+                 '\n'
+                 'gaujob={0}\n'
+                 'Homepath=$(pwd)\n'
+                 '\n'
+                 'cp "$gaujob.com" $Sctchpath\n'
+		 'cp "$gaujob.nci" $Sctchpath\n').format(job_name)
+
+    bash_text += 'PATH=$PATH:/projects/$RSP/nbo6/bin\n'
+    bash_text += 'export NCIPLOT_HOME="'"/projects/$RSP/nciplot"'"\n'
+    bash_text += 'ml python\n'
+    
+    if chk_file is not None:
+        bash_text += 'cp "{0}" $Sctchpath\n'.format(chk_file)
+
+    bash_text += ('\n'
+                  'cd $Sctchpath\n'
+                  '\n'
+                  '# Add useful info to top of output file\n'
+                  '\n'
+                  'touch $Homepath/$gaujob.log\n'
+                  'echo "Job Start Time: $(date)" > $Homepath/$gaujob.log\n'
+                  'echo "SLURM Job ID: $SLURM_JOB_ID" >> $Homepath/$gaujob.log\n'
+                  'echo "SLURM Job Name: $SLURM_JOB_NAME" >> $Homepath/$gaujob.log\n'
+                  '\n'
+                  '$g16root/g16/g16 < $Sctchpath/$gaujob.com >> $Homepath/$gaujob.log\n'
+                  '$NCIPLOT_HOME/nciplot $Sctchpath/$gaujob.nci $Homepath/$gaujob.out\n'
+                  '\n'
+                  'cp ./$gaujob.chk $Homepath/\n'
+                  'cp ./$gaujob.wfn $Homepath/\n'
+                  #'cp ./$gaujob.dat $Homepath/\n'
+                  'cp ./$gaujob-grad.cube $Homepath/\n'
+                  'cp ./$gaujob-dens.cube $Homepath/\n'
+		  'cd $Homepath\n'
+                  'python -m goodvibes $gaujob.log --xyz\n'
+                  'mv ./Goodvibes_output.xyz ./$gaujob.xyz\n'
+                  'rm Goodvibes_output.dat')
+		
+    return bash_text
+
+
+def parse_gaussian_inp(input_file, nproc, radius):
+    with open(input_file, 'rU') as f:
+        text = f.read()
+
+    old_chk_results = re.search(r'%oldchk= *"?(\w+.chk)"?', text)
+    chk_results = re.search(r'%chk= *"?(\w+.chk)"?', text)
+
+    import fileinput
+
+    wfn_file = False
+
+    for line in fileinput.input(input_file, inplace=True):
+        if line.lower().find('#') > -1 and line.lower().find('output=wfn') == -1:
+            print("%s" % (line.rstrip()+" output=wfn "))
+        else: print("%s" % (line).rstrip())
+	if line.lower().find('.wfn') > -1: wfn_file = True
+	
+    if wfn_file == False:
+    	f = open(input_file,"a")
+    	f.write(input_file.split('.')[0]+'.wfn')
+    	f.write('\n\n')
+    	f.close()
+
+    nci_file = input_file.split('.')[0]+'.nci'
+    if not os.path.exists(nci_file):
+	f = open(nci_file,"w")
+	f.write('1\n')
+        f.write(input_file.split('.')[0]+'.wfn\n')
+        f.write('RADIUS 0. 0. 0. '+str(radius)+'\n')
+        f.close()
+
+    f = open(input_file,"r")
+    for i, line in enumerate(f.readlines()):
+	if line.lower().find('%nproc') > -1: 
+    		try:
+			n_cpu = int(line.split('=')[1])
+		except: pass
+        if line.lower().find('#') > -1:
+                if line.lower().find('output=wfn') == -1:
+			print(i, line)
+			
+    if n_cpu != nproc:
+        print("number of processors requested doesn't match input file!")
+        sys.exit()
+
+    if not chk_results:
+        #pass
+	print("Gaussian com file must have chk file line")
+        sys.exit(1)
+
+    chk_file = chk_results.group(1)
+
+    if old_chk_results:  # if oldchk is specified in com file
+        chk_file = old_chk_results.group(1)
+        if not os.path.isfile(chk_file):  # error out if oldchk file doesn't exist
+            print("oldchk file specified but not found")
+            sys.exit(1)
+    elif not os.path.isfile(chk_file):  # if chk file is not present and %oldchk is not specified, clear chk_file
+        chk_file = None
+
+    return chk_file
+
+
+
+def main():
+    TODAY = datetime.date.today()
+
+    # Start a log for the results
+    log = Logger("QSUB","sub", str(TODAY)) 
+
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(nargs = '*', dest = 'input_file')
+    parser.add_argument('-t', '--walltime', type=str, default="23:59:59",
+                        help='Walltime for job in format hh:mm:ss (REQUIRED')
+    parser.add_argument('-p', '--partition', type=str, choices=PARTITION_ACCEPT, default=PARTITION_ACCEPT[0],
+                        help='Summit partition to submit job to')
+    parser.add_argument('-q', '--qos', type=str, choices=QOS_ACCEPT, default=QOS_ACCEPT[0],
+                        help='Summit QOS to use for job')
+    parser.add_argument('-m', '--mail', type=str, choices=MAIL_ACCEPT, help='Send email upon given condition')
+    parser.add_argument('-n', '--nproc', type=int, default=24, help='Number of cpus to use per node')
+    parser.add_argument('--proj', action="store_true", default=False, help='Use a special project account')
+    parser.add_argument('--nnode', type=int, default=1, help='Number of nodes')
+    parser.add_argument('--radius', type=float, default=3.0, help='radius of NCI analysis')
+
+    args = parser.parse_args()
+
+
+    log.Write("\n   " + '{:<30} {:>35} {:>10} {:>15}'.format("SUBMITTING TO ACCOUNT", "FILENAME", "nCPU", "WALLTIME"))
+    log.Write("\n"+stars+"")
+    for file in args.input_file:
+        abs_path, job_name, file_type = determine_calculation_type(file)
+
+        chk_file = None
+
+        nproc = args.nproc
+        if file_type == 'none':
+            print('Filetype not recognized')
+            sys.exit(1)
+        
+        chk_file = parse_gaussian_inp(file, args.nproc, args.radius)
+
+	account = ACCOUNTS_LIST[0]
+	if args.qos == 'condo': account = ACCOUNTS_LIST[2]
+	if args.proj == True: account = ACCOUNTS_LIST[1]
+        
+        generate_bash_script(abs_path, job_name, file_type, args.walltime, args.partition, args.qos, args.mail, args.nnode,
+                             nproc, chk_file, account)
+	
+	log.Write("\n   " + '{:<30} {:>35} {:>10} {:>15}'.format(account, file, nproc,  args.walltime))
+    log.Write("\n"+stars+"\n")
+
+
+if __name__ == '__main__':
+    main()
+

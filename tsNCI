@@ -1,0 +1,362 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+from __future__ import print_function, absolute_import
+
+#Python Libraries
+import os, sys
+from numpy import *
+from scipy import *
+from math import *
+from glob import glob
+import numpy as np
+from argparse import ArgumentParser
+
+try:
+        from pyDFTD3 import dftd3 as D3
+except:
+        try: from dftd3 import dftd3 as D3
+        except: pass
+
+# PHYSICAL CONSTANTS                                      UNITS
+PERMITTIVITY =          8.8541878128e-12                # F * m−1
+COULOMB =               1.602176634e-19                 # C
+GAS_CONSTANT =          8.3144621                       # J / K / mol
+PLANCK_CONSTANT =       6.62606957e-34                  # J * s
+BOLTZMANN_CONSTANT =    1.3806488e-23                   # J / K
+SPEED_OF_LIGHT =        2.99792458e10                   # cm / s
+AVOGADRO_CONSTANT =     6.0221415e23                    # 1 / mol
+AMU_to_KG =             1.66053886E-27                  # UNIT CONVERSION
+ATMOS =                 101.325                         # UNIT CONVERSION
+J_TO_AU =               4.184 * 627.509541 * 1000.0     # UNIT CONVERSION
+KCAL_TO_AU =            627.509541                      # UNIT CONVERSION
+
+# Radii used to determine connectivity in symmetry corrections
+# Covalent radii taken from Cambridge Structural Database
+RADII = {'H' :0.32, 'He':0.93, 'Li':1.23, 'Be':0.90, 'B' :0.82, 'C' :0.77, 'N' :0.75, 'O' :0.73, 'F' :0.72, 'Ne':0.71,
+        'Na':1.54, 'Mg':1.36, 'Al':1.18, 'Si':1.11, 'P' :1.06, 'S' :1.02, 'Cl':0.99, 'Ar':0.98, 'K' :2.03, 'Ca':1.74, 'Sc':1.44,
+        'Ti':1.32, 'V' :1.22, 'Cr':1.18, 'Mn':1.17, 'Fe':1.17, 'Co':1.16, 'Ni':1.15, 'Cu':1.17, 'Zn':1.25, 'Ga':1.26, 'Ge':1.22,
+        'As':1.20, 'Se':1.16, 'Br':1.14, 'Kr':1.12, 'Rb':2.16, 'Sr':1.91, 'Y' :1.62, 'Zr':1.45, 'Nb':1.34, 'Mo':1.30, 'Tc':1.27,
+        'Ru':1.25, 'Rh':1.25, 'Pd':1.28, 'Ag':1.34, 'Cd':1.48, 'In':1.44, 'Sn':1.41, 'Sb':1.40, 'Te':1.36, 'I' :1.33, 'Xe':1.31,
+        'Cs':2.35, 'Ba':1.98, 'La':1.69, 'Lu':1.60, 'Hf':1.44, 'Ta':1.34, 'W' :1.30, 'Re':1.28, 'Os':1.26, 'Ir':1.27, 'Pt':1.30,
+        'Au':1.34, 'Hg':1.49, 'Tl':1.48, 'Pb':1.47, 'Bi':1.46, 'X' :0}
+
+#Bondi Van der Waals radii taken from [J. Phys. Chem. A. 2009, 103, 5806-5812]
+BONDI = {"Bq": 0.00, "H": 1.09,"He": 1.40,"Li": 1.81,"Be": 1.53,"B": 1.92,"C": 1.70,"N": 1.55,"O": 1.52,"F": 1.47,"Ne":1.54,
+        "Na":2.27,"Mg":1.73,"Al":1.84,"Si":2.10,"P":1.80,"S":1.80, "Cl":1.75,"Ar":1.88,
+        "K":2.75,"Ca":2.31,"Ga":1.87,"Ge":2.11,"As":1.85,"Se":1.90,"Br":1.83,"Kr":2.02,
+        "Rb":3.03,"Sr":2.49,"In":1.93,"Sn":2.17,"Sb":2.06,"Te":2.06,"I":1.98,"Xe":2.16,
+        "Cs":3.43,"Ba":2.68,"Tl":1.96,"Pb":2.02,"Bi":2.07,"Po":1.97,"At":2.02,"Rn":2.20,
+        "Fr":3.48,"Ra":2.83, "Pd": 1.63, "Ni": 0.0, "Rh": 2.00, "Cu": 1.40, 'Au': 2.00}
+
+metals = ["Li","Be","Na","Mg","Al","K","Ca","Sc","Ti","V","Cr","Mn","Fe","Co","Ni","Cu","Zn","Ga","Rb","Sr","Y","Zr","Nb","Mo",
+        "Tc","Ru","Rh","Pd","Ag","Cd","In","Sn","Cs","Ba","La","Ce","Pr","Nd","Pm","Sm","Eu","Gd","Tb","Dy","Ho","Er","Tm","Yb","Lu",
+        "Hf","Ta","W","Re","Os","Ir","Pt","Au","Hg","Tl","Pb","Bi","Po","Fr","Ra","Ac","Th","Pa","U","Np","Pu","Am","Cm","Bk","Cf",
+        "Es","Fm","Md","No","Lr","Rf","Db","Sg","Bh","Hs","Mt","Ds","Rg","Cn","Uut","Fl","Uup","Lv"]
+
+def RepresentsFloat(s):
+        try:
+                float(s)
+                return True
+        except ValueError:
+                return False
+
+def RepresentsInt(s):
+        try:
+                int(s)
+                return True
+        except ValueError:
+                return False
+
+def getMollist(connectivity,natoms):
+        mol, mollist = 0, []
+        for i in range(0,natoms): mollist.append('')
+
+        for base in range(0,natoms):
+                if mollist[base] == '':
+                        atomlist=[base]
+                        count = 0
+                        while count<100:
+                                for atom in atomlist:
+                                        for nextatom in connectivity[atom]:
+                                                if nextatom not in atomlist: atomlist.append(nextatom)
+                                count=count+1
+
+                        for i in range(0,natoms):
+                                if i in atomlist:
+                                        mollist[i] = mol
+                        mol += 1
+        return mollist
+
+class get_data:
+        def __init__(self, file):
+
+                def checkFILE(self, outlines):
+                        if not os.path.exists(file): print("\nFATAL ERROR: File {} does not exist".format(file)); sys.exit()
+
+                def getATOMTYPES(self, outlines, format):
+                        self.ATOMTYPES, self.CARTESIANS = [], []
+                        if format == '.xyz':
+                                for i in range(0,len(outlines)):
+                                        try:
+                                                coord = outlines[i].split()
+                                                if len(coord) == 4:
+                                                        if RepresentsFloat(coord[1]) == True and RepresentsFloat(coord[2]) and RepresentsFloat(coord[3]):
+                                                                [atom, x,y,z] = [coord[0], float(coord[1]), float(coord[2]), float(coord[3])]
+                                                                self.ATOMTYPES.append(atom); self.CARTESIANS.append([x,y,z])
+                                        except: pass
+                        else: print("\nFATAL ERROR: {} format is not supported".format(format))
+
+                def getBONDORDERS(self, outlines, format):
+                        self.BONDORDERS = []
+                        if format == '.xtb':
+                                atoma = 0
+                                for i in range(0,len(outlines)):
+                                        if outlines[i].find('total WBO') > -1: break
+                                for j in range(i+1,len(outlines)):
+                                        try:
+                                                wiberg = outlines[j].split()
+                                                if len(wiberg) >= 3:
+                                                        bos = outlines[j][20:].strip().split()
+                                                        nbos = int(len(bos) / 3)
+
+                                                        for k in range(0,nbos):
+                                                                # the indices are reduced by one to be consistent with array numbering
+                                                                atomb, val = int(bos[k*3+1])-1, float(bos[k*3+2])
+                                                                # orders the atoms so that i<j
+                                                                if atomb > atoma:
+                                                                        self.BONDORDERS.append([atoma,atomb,val])
+
+                                                        atoma += 1
+                                                if len(wiberg) < 3: break
+                                        except: pass
+
+                        elif format == '.wbo':
+                                for i in range(0,len(outlines)):
+                                        try:
+                                                wiberg = outlines[i].split()
+                                                if len(wiberg) == 3:
+                                                        if RepresentsInt(wiberg[0]) == True and RepresentsInt(wiberg[1]) and RepresentsFloat(wiberg[2]):
+                                                                [atoma, atomb , bo] = [int(wiberg[0]), int(wiberg[1]), float(wiberg[2])]
+                                                                # orders the atoms so that i<j
+                                                                # the indices are reduced by one to be consistent with array numbering
+                                                                if atoma < atomb : self.BONDORDERS.append([atoma-1,atomb-1,bo])
+                                                                else: self.BONDORDERS.append([atomb-1,atoma-1,bo])
+                                        except: pass
+
+                        else: print("\nFATAL ERROR: {} format is not supported".format(format))
+
+                def getCHARGES(self, outlines, format):
+                        self.CHARGE, self.C6 = [], []
+                        if format == '.xtb':
+                                for i in range(0,len(outlines)):
+                                        if outlines[i].find('covCN') > -1: break
+                                for j in range(i+1,len(outlines)):
+                                        try:
+                                                data = outlines[j].split()
+                                                if len(data) >4:
+                                                        charge = float(data[4])
+                                                        self.CHARGE.append(charge)
+                                                        c6coeff = float(data[6])
+                                                        self.C6.append(c6coeff)
+                                                if len(data) < 3: break
+                                        except: pass
+
+                        else: print("\nFATAL ERROR: {} format is not supported".format(format))
+
+                def getCONNECTIVITY(self, outlines, format):
+                        connectivity = []
+                        tolerance = 0.1
+                        self.RELATED13, self.RELATED14 = [], []
+                        if format == '.xyz':
+                                for i,ai in enumerate(self.ATOMTYPES):
+                                        row = []
+                                        for j,aj in enumerate(self.ATOMTYPES):
+                                                if i==j:
+                                                        continue
+                                                cutoff = RADII[ai] + RADII[aj] + tolerance
+
+                                                distance = np.linalg.norm(np.array(self.CARTESIANS[i])-np.array(self.CARTESIANS[j]))
+                                                if distance < cutoff:
+                                                        row.append(j)
+                                        connectivity.append(row)
+                                        self.CONNECTIVITY = connectivity
+
+                                # List of atoms which share a common neighbor
+                                for i,ai in enumerate(self.ATOMTYPES):
+                                        for j,aj in enumerate(self.ATOMTYPES):
+                                                connect_i, connect_j = self.CONNECTIVITY[i], self.CONNECTIVITY[j]
+                                                for atom in connect_i:
+                                                        if atom in connect_j:
+                                                                if self.ATOMTYPES[atom] not in metals:
+                                                                        self.RELATED13.append([i,j])
+
+                                                        # List of atoms which share a path of two intermediate atoms
+                                                        neighbors = self.CONNECTIVITY[atom]
+                                                        for next_atom in neighbors:
+                                                                if next_atom in connect_j:
+                                                                        if self.ATOMTYPES[atom] not in metals and self.ATOMTYPES[next_atom] not in metals:
+                                                                                self.RELATED14.append([i,j])
+
+                        else: print("\nFATAL ERROR: {} format is not supported".format(format))
+
+                checkFILE(self, file)
+                molfile = open(file,"r")
+                mollines = molfile.readlines()
+                format = os.path.splitext(file)[1].lower()
+                if format in ['.xyz']:
+                        getATOMTYPES(self, mollines, format)
+                        getCONNECTIVITY(self, mollines, format)
+                        self.MOLLIST = getMollist(self.CONNECTIVITY, len(self.ATOMTYPES))
+                if format in ['.wbo', '.xtb']:
+                        getBONDORDERS(self, mollines, format)
+                        getCHARGES(self, mollines, format)
+
+def main():
+        files = []
+        parser = ArgumentParser()
+        parser.add_argument("--wbo", dest="wbo", default=False, action="store_true", help="Request wbo file")
+        parser.add_argument("--xtb", dest="xtb", default=True, action="store_true", help="Request xtb file")
+        parser.add_argument("-v", dest="verbose", default=False, action="store_true", help="Request verbose printing")
+        parser.add_argument("--metals", dest="metals", default=False, action="store_true", help="By default bonds to metals are not examined")
+        (options, args) = parser.parse_known_args()
+
+        # Get Coordinate files - can be xyz
+        if len(sys.argv) > 1:
+                for elem in sys.argv[1:]:
+                        try:
+                                if os.path.splitext(elem)[1] in [".xyz"]:
+                                        for file in glob(elem): files.append(file)
+                        except IndexError: pass
+
+        if len(files) is 0:
+                sys.exit("    Please specify a valid input file and try again.")
+        for file in files: # loop over all specified output files
+
+                # contacts
+                ts, hb, disp = [], [], []
+
+                # D3 options
+                verbose, intermolecular, pairwise, abc_term = False, False, False, False
+                s6, rs6, s8, bj_a1, bj_a2 = 0.0, 0.0, 0.0, 0.0, 0.0
+                functional = 'B3LYP'
+                damp = 'bj'
+
+                # read Cartesian coordinates
+                fileData = get_data(file)
+                print('\n   Reading from {}'.format(file))
+                nmols = max(fileData.MOLLIST) + 1
+                print('o  Found {} molecules'.format(nmols))
+
+                # look for Wiberg Data either in wbo file or xtb output file
+                if options.xtb == True:
+                        xtbfile = os.path.splitext(file)[0]+'.xtb'
+                        wboData = get_data(xtbfile)
+                if options.wbo == True:
+                        wbofile = os.path.splitext(file)[0]+'.wbo'
+                        wboData = get_data(wbofile)
+
+
+                # Look for atoms closer than sum of VDW with favorable interaction energies
+                for i, icart in enumerate(fileData.CARTESIANS):
+                        for j, jcart in enumerate(fileData.CARTESIANS):
+
+                                iat, jat = fileData.ATOMTYPES[i], fileData.ATOMTYPES[j]
+                                dist = np.linalg.norm(np.array(jcart) - np.array(icart))
+                                sumvdw = BONDI[iat] + BONDI[jat]
+                                sumcov = RADII[iat] + RADII[jat]
+                                ic6, jc6 = wboData.C6[i], wboData.C6[j]
+
+                                # Look for appreciable Wiberg values where there is no formal bond
+                                if [i,j] in [[k,l] for [k,l,bond_order] in wboData.BONDORDERS]:
+                                        for [k,l,wbo] in wboData.BONDORDERS:
+                                                if [i,j] == [k,l]: bond_order = wbo
+
+                                        # arbitrary value of 0.7 chosen to avoid bonded pairs of atoms
+                                        if 0.12 < bond_order < 0.7:
+                                                matched = False
+                                                # see if there is also a formal bond (based on covalent radii definition)
+                                                for a, connect in enumerate(fileData.CONNECTIVITY):
+                                                        for b in connect:
+                                                                if b > a and i == a and j == b: matched = True
+
+                                                if matched == False:
+                                                        # at this point we have established that atoms k/l are not formally bonded but have an appreciable WBO
+                                                        # if the 2 atoms are in different molecules no need to do any more checks
+                                                        if fileData.MOLLIST[i] != fileData.MOLLIST[j]:
+                                                                if options.metals == True or iat not in metals and jat not in metals:
+                                                                        if options.verbose == True:
+                                                                                print('   TS:{:7.2f} D:{:5.3f} - {}{}-{}{} (INTERMOLECULAR)'.format(bond_order, dist, iat,(i+1),jat,(j+1)))
+                                                                        ts.append([bond_order, dist,iat,i,jat,j,'intermolecular'])
+
+                                                        else:
+                                                        # If they are in the same molecule, check if the atoms are 1,3-connected or 1,4-connected. If so (and the central atom(s) is not a metal) they are discounted
+                                                                related_13, related_14 = False, False
+
+                                                                if [i, j] in fileData.RELATED13:
+                                                                        if iat == 'C' and ic6 > 7.0: related_13 = True
+                                                                        if jat == 'C' and jc6 > 7.0: related_13 = True
+                                                                        if iat != 'C' and jat != 'C': related_13 = True
+
+                                                                if [i, j] in fileData.RELATED14:
+                                                                        related_14 = True
+
+                                                                if not related_13 and not related_14:
+                                                                        if options.metals == True or iat not in metals and jat not in metals:
+                                                                                if options.verbose == True:
+                                                                                        print('   TS:{:7.2f} D:{:5.3f} - {}{}-{}{} (INTRAMOLECULAR)'.format(bond_order, dist, iat,(i+1),jat,(j+1)))
+                                                                                ts.append([bond_order, dist, iat,i,jat,j, 'intramolecular'])
+                                                                else:
+                                                                        if options.verbose == True: print('   1,3/1,4-related      - {}{}-{}{}'.format(iat,(i+1),jat,(j+1)))
+
+                                # there is no bond detected (by WBO) between atoms i and j
+                                if [i,j] not in [[k,l] for [k,l,bo] in wboData.BONDORDERS]:
+                                        if j > i:
+                                                if dist / sumvdw < 0.9 and dist / sumcov > 1.1:
+                                                        # compute electrostatic energy
+                                                        try:
+                                                                e_elst = AVOGADRO_CONSTANT * wboData.CHARGE[i] * wboData.CHARGE[j] * COULOMB * COULOMB  / (4 * math.pi * PERMITTIVITY * dist * 1e-10) / 4184
+                                                                #print(e_elst)
+                                                        except: e_elst = 0.0
+                                                        try:
+                                                                class pairData:
+                                                                        CARTESIANS = [fileData.CARTESIANS[i],fileData.CARTESIANS[j]]
+                                                                        ATOMTYPES = [iat,jat]
+                                                                pair = pairData()
+                                                                d3_calc = D3.calcD3(pair, functional, s6, rs6, s8, bj_a1, bj_a2, damp, abc_term, intermolecular, pairwise, verbose)
+                                                                d3_energy = (d3_calc.attractive_r6_vdw + d3_calc.attractive_r8_vdw +  d3_calc.repulsive_abc)
+                                                        except: d3_energy = 0.0
+
+                                                        # exclude 1,3- and 1,4-interactions
+                                                        if [i,j] not in fileData.RELATED13 and [i,j] not in fileData.RELATED14:
+                                                                if iat == 'H' or jat =='H':
+                                                                        if e_elst < -10.00:
+                                                                                if fileData.MOLLIST[i] != fileData.MOLLIST[j]:
+                                                                                        if options.verbose == True: print('   HB:{:7.2f} D:{:5.3f} - {}{}-{}{} (INTERMOLECULAR)'.format(e_elst, dist, iat, (i+1), jat, (j+1)))
+                                                                                        hb.append([e_elst, dist, iat,i,jat,j, 'intermolecular'])
+                                                                                else:
+                                                                                        if options.verbose == True: print('   HB:{:7.2f} D:{:5.3f} - {}{}-{}{} (INTRAMOLECULAR)'.format(e_elst, dist, iat, (i+1), jat, (j+1)))
+                                                                                        hb.append([e_elst, dist, iat,i,jat,j, 'intramolecular'])
+
+                                                                if iat != 'H' and jat !='H':
+                                                                        if d3_energy < -0.5:
+                                                                                if options.verbose == True: print('   DI:{:7.2f} D:{:5.3f} - {}{}-{}{}'.format(d3_energy, dist, iat, (i+1), jat, (j+1)))
+                                                                                disp.append([d3_energy, dist, iat,i,jat,j, 'none'])
+
+                for contact in ts:
+                        print('TS', contact)
+                        tsatoms = [tscontact[3] for tscontact in ts] + [tscontact[5] for tscontact in ts]
+                        adj = [fileData.CONNECTIVITY[tsatom] for tsatom in tsatoms]
+                        adjacent_atoms =  [item for sublist in adj for item in sublist]
+                        adjacent_atoms = sorted(list(set(adjacent_atoms)))
+                        adjacent_atoms = [x for x in adjacent_atoms if x not in tsatoms]
+                for contact in hb:
+                        print('HB', contact)
+                for contact in disp:
+                        # we don't allow atoms involved in bond formation to form dispersion interactions
+                        # we can also bar atoms connected to bond forming atoms since they tend to also have short interatomic contacts by default
+                        if contact[3] not in tsatoms and contact[5] not in tsatoms:
+                                if contact[3] not in adjacent_atoms and contact[5] not in adjacent_atoms:
+                                        print('DISP', contact)
+
+if __name__ == "__main__":
+        main()
