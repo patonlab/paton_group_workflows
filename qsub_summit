@@ -398,7 +398,6 @@ def main():
     parser.add_argument('-a','--account',type=str,choices=ACCOUNTS_LIST,default=ACCOUNTS_LIST[0],help='Account to submit job to')
     parser.add_argument('-m', '--mail', type=str, choices=MAIL_ACCEPT, help='Send email upon given condition')
     parser.add_argument('-n', '--nproc', type=int, default=24, help='Number of cpus to use per node')
-    parser.add_argument('--proj', action="store_true", default=False, help='Use a special project account')
     parser.add_argument('--nnode', type=int, default=1, help='Number of nodes')
     parser.add_argument('--version', type=str, default='current', help='Request old version of Gaussian [b01 = B.01] or Orca [v401 = 4.0.1, v412 = 4.1.2], v420 = 4.2.0')
     parser.add_argument('--code', type=str, default='xtb', help='Request crest, xtb, or enso code routines')
@@ -427,11 +426,8 @@ def main():
 
         account = args.account
         if args.qos == 'condo': #use rsp account
-            account = ACCOUNTS_LIST[2]
-            print("Condo QOS requested, using {} account".format(account))
-        if args.proj == True:  #use csu22 account
             account = ACCOUNTS_LIST[1]
-            print("Projects account requested, using {} account".format(account))
+            print("Condo QOS requested, using {} account".format(account))
         # use testing partition with testing qos
         if args.partition == 'shas-testing':
             args.qos = 'testing'
@@ -446,14 +442,7 @@ def main():
                 print(err)
                 print(PARTITION_ACCEPT[0:6])
                 sys.exit(1)
-        elif account is ACCOUNTS_LIST[1]: #csu22_summit1
-            if args.partition not in PARTITION_ACCEPT[0:6]:
-                err = ('Error: partition {0} cannot be used with account {1}\n'
-                'csu22_summit1 may use the following partitions:'.format(args.partition,account))
-                print(err)
-                print(PARTITION_ACCEPT[0:6])
-                sys.exit(1)
-        elif account is ACCOUNTS_LIST[2]: #csu-summit-rsp
+        elif account is ACCOUNTS_LIST[1]: #csu-summit-rsp
             # all partitions and QOS accepted, cannot run condo on ssky, cant run long on ssky-preemptable or ssky-csu-rsp
             if args.partition in PARTITION_ACCEPT[5:] and args.qos is 'condo':
                 err = 'Error: qos {0} not available on ssky nodes\n'.format(args.qos)
