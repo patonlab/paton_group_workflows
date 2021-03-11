@@ -15,7 +15,7 @@ import time
 import re
 import subprocess
 
-ACCOUNTS_LIST = ['csu-general','csu-summit-rsp']
+ACCOUNTS_LIST = ['csu-general','csu-summit-rsp'] 
 PARTITION_ACCEPT = ['shas', 'shas-testing', 'sgpu', 'smem', 'sknl', 'ssky', 'ssky-csu-rsp', 'ssky-preemptable',]
 QOS_ACCEPT = ['normal', 'testing', 'long', 'condo']
 MAIL_ACCEPT = ['END', 'BEGIN', 'FAIL', 'ALL']
