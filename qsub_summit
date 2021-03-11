@@ -124,28 +124,98 @@ def generate_xtb_script(job_name, code, nproc, args):
                  'export XTBHOME=/projects/$RSP/xtb-6.4.0\n'
                  'export PATH=$PATH:$XTBHOME\n'
                  'xtbjob={0}\n').format(job_name)
+
+    #adding in scratch
+    bash_text += ('Sctchpath="/scratch/summit/$USER/$SLURM_JOB_ID"\n'
+                 'mkdir $Sctchpath\n'
+                 '\n'
+                 'Homepath=$(pwd)\n'
+                 '\n'
+                 'cp "$xtbjob.xyz" $Sctchpath\n').format(job_name)
+
+    bash_text += 'PATH=$PATH:/projects/$RSP/nbo7/bin\n'
+
+    bash_text += ('\n'
+                  'cd $Sctchpath\n'
+                  '\n')
+
     if code == 'xtb':
+        bash_text += ('# Add useful info to top of output file\n'
+                      '\n'
+                      'touch $Homepath/$xtbjob.xtb\n'
+                      'echo "Job Start Time: $(date)" > $Homepath/$xtbjob.xtb\n'
+                      'echo "SLURM Job ID: $SLURM_JOB_ID" >> $Homepath/$xtbjob.xtb\n'
+                      'echo "SLURM Job Name: $SLURM_JOB_NAME" >> $Homepath/$xtbjob.xtb\n'
+                      '\n')
         bash_text += ('\n'
-            '$XTBHOME/bin/xtb $xtbjob.xyz '+args+' > $xtbjob.xtb\n')
+            '$XTBHOME/bin/xtb $Sctchpath/$xtbjob.xyz '+args+' >> $Homepath/$xtbjob.xtb\n'
+            '\n'
+            'mv ./$xtbjob.* $Homepath/\n'
+            'mv ./charges $Homepath/\n'
+            'mv ./wbo $Homepath/\n'
+            'mv ./xtbrestart $Homepath/\n'
+            'mv ./xtbtopo.mol $Homepath/\n')
+
     if code == 'crest':
-        bash_text += ('\n'
-            'export PATH=$PATH:$XTBHOME/bin:\n'
-            '$XTBHOME/crest $xtbjob.xyz '+args+' -T {0} -niceprint > $xtbjob.out\n'
-            'rm -r METADYN* NORMMD* MRMSD wbo cregen_* coord*\n'
-            'mv crest_conformers.xyz $xtbjob.confs.xyz\n'
-            'mv crest_best.xyz $xtbjob.best.xyz\n'
-            'rm crest*').format(nproc)
+        bash_text += ('# Add useful info to top of output file\n'
+                      '\n'
+                      'touch $Homepath/$xtbjob.out\n'
+                      'echo "Job Start Time: $(date)" > $Homepath/$xtbjob.out\n'
+                      'echo "SLURM Job ID: $SLURM_JOB_ID" >> $Homepath/$xtbjob.out\n'
+                      'echo "SLURM Job Name: $SLURM_JOB_NAME" >> $Homepath/$xtbjob.out\n'
+                      '\n')
+        if args=='':
+            bash_text += ('\n'
+                'export PATH=$PATH:$XTBHOME/bin:\n'
+                '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
+                'rm -r METADYN* NORMMD* MRMSD wbo cregen_* coord*\n'
+                'mv crest_conformers.xyz $Homepath/$xtbjob.confs.xyz\n'
+                'mv crest_best.xyz $Homepath/$xtbjob.best.xyz\n'
+                'mv struc.xyz $Homepath/$xtbjob.struc.xyz\n'
+                'rm ./crest*').format(nproc)
+        elif args=='deprotonate':
+            bash_text += ('\n'
+                'export PATH=$PATH:$XTBHOME/bin:\n'
+                '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+'-'+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
+                'mv ./deprotonated.xyz $Homepath/$xtbjob.deprotonated.xyz\n'
+                'mv ./struc.xyz $Homepath/$xtbjob.struc.xyz\n'
+                'rm ./deprotonate_*.xyz\n'
+                'rm ./crest*').format(nproc)
+        else:
+            bash_text += ('\n'
+                'export PATH=$PATH:$XTBHOME/bin:\n'
+                '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
+                'rm -r METADYN* NORMMD* MRMSD wbo cregen_* coord*\n'
+                'mv crest_conformers.xyz $Homepath/$xtbjob.confs.xyz\n'
+                'mv crest_best.xyz $Homepath/$xtbjob.best.xyz\n'
+                'mv struc.xyz $Homepath/$xtbjob.struc.xyz\n'
+                'rm ./crest*').format(nproc)
+
+    #need to edit for args if needed and GFN-xTB not working.
     if code == 'enso':
+        bash_text += ('# Add useful info to top of output file\n'
+                      '\n'
+                      'touch $Homepath/$xtbjob.out\n'
+                      'echo "Job Start Time: $(date)" > $Homepath/$xtbjob.out\n'
+                      'echo "SLURM Job ID: $SLURM_JOB_ID" >> $Homepath/$xtbjob.out\n'
+                      'echo "SLURM Job Name: $SLURM_JOB_NAME" >> $Homepath/$xtbjob.out\n'
+                      '\n')
         bash_text += ('\n'
             'export PATH=$PATH:$XTBHOME/bin:\n'
             'export PARA_ARCH=SMP\n'
             'export PARNODES=4\n'  ## omp
-            '$XTBHOME/crest $xtbjob.xyz '+args+' -T {0} -niceprint > $xtbjob.out\n'
-            'source activate DL_CPU\n' #NOT WORKING
-            'cp /home/$USER/bin/enso.py enso.py\n'
+            '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
+            'source /curc/sw/anaconda3/latest\n' # needed for activating conda on a node
+            'source activate DL_CPU\n' #NOT WORKING - above line should fix it!
+            'cp /home/$USER/bin/enso.py $Sctchpath/enso.py\n'
             'python enso.py\n'
             'export PYTHONUNBUFFERED=1\n'
-            'python enso.py -run > enso.out\n'
+            'python enso.py -run > $Homepath/enso.out\n'
+            'mv CONF* $Homepath\n'
+            'mv crest_conformers.xyz $Homepath/$xtbjob.crest_conformers.xyz\n'
+            'mv crest_rotamers.xyz $Homepath/$xtbjob.crest_rotamers.xyz\n'
+            'mv crest_best.xyz $Homepath/$xtbjob.crest_best.xyz\n'
+            'mv struc.xyz $Homepath/$xtbjob.struc.xyz\n'
             'rm enso.py')
     return bash_text
 
@@ -320,7 +390,7 @@ def main():
 
     parser.add_argument(nargs = '*', dest = 'input_file')
     parser.add_argument('-t', '--walltime', type=str, default="23:59:59",
-                        help='Walltime for job in format hh:mm:ss')
+                        help='Walltime for job in format hh:mm:ss (REQUIRED')
     parser.add_argument('-p', '--partition', type=str, choices=PARTITION_ACCEPT, default=PARTITION_ACCEPT[0],
                         help='Summit partition to submit job to')
     parser.add_argument('-q', '--qos', type=str, choices=QOS_ACCEPT, default=QOS_ACCEPT[0],
