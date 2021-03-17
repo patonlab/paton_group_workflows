@@ -210,7 +210,7 @@ def generate_xtb_script(job_name, code, nproc, args):
             'cp /home/$USER/bin/enso.py $Sctchpath/enso.py\n'
             'python enso.py\n'
             'export PYTHONUNBUFFERED=1\n'
-            'python enso.py -run > $Homepath/enso.out\n'
+            'python enso.py -run > $Homepath/$xtbjob.enso.out\n'
             'mv CONF* $Homepath\n'
             'mv crest_conformers.xyz $Homepath/$xtbjob.crest_conformers.xyz\n'
             'mv crest_rotamers.xyz $Homepath/$xtbjob.crest_rotamers.xyz\n'
