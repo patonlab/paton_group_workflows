@@ -9,11 +9,11 @@ The following scripts are available:
 - RotMol (rotates molecules, creating new input files)
 
 The following python modules are available (python -m module):
-- goodvibes (thermochemical anaylsis)
-- pyqrc (fast reaction coordinate)
-- pydftd3 (D3-dispersion corrections)
-- kinisot (kinetic isotope effects)
-- sterimol (steric parameters)
+- goodvibes (thermochemical anaylsis) | https://github.com/bobbypaton/GoodVibes
+- pyqrc (fast reaction coordinate) | https://github.com/bobbypaton/pyQRC
+- pydftd3 (D3-dispersion corrections) | https://github.com/bobbypaton/pyDFTD3
+- kinisot (kinetic isotope effects) | https://github.com/bobbypaton/Kinisot
+- DBSTEP (steric parameters) | https://github.com/bobbypaton/DBSTEP
 - ase (atomic simulation environment)
 
 To activate a python environment where rdkit, openbabel etc are present:
@@ -21,7 +21,7 @@ To activate a python environment where rdkit, openbabel etc are present:
 
 The following software is available:
 - QChem 5.2 /projects/rpaton@colostate.edu/qchem
-- Gaussian 16 rev B.01 - /projects/rpaton@colostate.edu/g16/g16
+- Gaussian 16 rev C.01 - /projects/rpaton@colostate.edu/g16/g16
 - Orca v4.2.1 - /projects/rpaton@colostate.edu/orca_4_2_1_linux_x86-64_openmpi216
 - NBO v7 - /projects/rpaton@colostate.edu/nbo6/bin/gaunbo7
 - NCIPlot v4 - /projects/rpaton@colostate.edu/nciplot/nciplot
@@ -38,17 +38,18 @@ The following software is available:
 - RUNTEST all 
 - This will submit several jobs. When finished, check they ran properly:
 - CHECKTEST all
-      ___       ___                 ___          ___                       ___                  
-     /\  \     /\  \               /\  \        /\  \                     /\  \        _____    
-    /::\  \   /::\  \       ___   /::\  \       \:\  \                   /::\  \      /::\  \   
-   /:/\:\__\ /:/\:\  \     /\__\ /:/\:\  \       \:\  \                 /:/\:\  \    /:/\:\  \  
-  /:/ /:/  //:/ /::\  \   /:/  //:/  \:\  \  _____\:\  \  ___     ___  /:/ /::\  \  /:/ /::\__\ 
- /:/_/:/  //:/_/:/\:\__\ /:/__//:/__/ \:\__\/::::::::\__\/\  \   /\__\/:/_/:/\:\__\/:/_/:/\:|__|
- \:\/:/  / \:\/:/  \/__//::\  \\:\  \ /:/  /\:\~~\~~\/__/\:\  \ /:/  /\:\/:/  \/__/\:\/:/ /:/  /
-  \::/__/   \::/__/    /:/\:\  \\:\  /:/  /  \:\  \       \:\  /:/  /  \::/__/      \::/_/:/  / 
-   \:\  \    \:\  \    \/__\:\  \\:\/:/  /    \:\  \       \:\/:/  /    \:\  \       \:\/:/  /  
-    \:\__\    \:\__\        \:\__\\::/  /      \:\__\       \::/  /      \:\__\       \::/  /   
-     \/__/     \/__/         \/__/ \/__/        \/__/        \/__/        \/__/        \/__/    
+    
+          ___       ___                 ___          ___                       ___                  
+         /\  \     /\  \               /\  \        /\  \                     /\  \        _____    
+        /::\  \   /::\  \       ___   /::\  \       \:\  \                   /::\  \      /::\  \   
+       /:/\:\__\ /:/\:\  \     /\__\ /:/\:\  \       \:\  \                 /:/\:\  \    /:/\:\  \  
+      /:/ /:/  //:/ /::\  \   /:/  //:/  \:\  \  _____\:\  \  ___     ___  /:/ /::\  \  /:/ /::\__\ 
+     /:/_/:/  //:/_/:/\:\__\ /:/__//:/__/ \:\__\/::::::::\__\/\  \   /\__\/:/_/:/\:\__\/:/_/:/\:|__|
+     \:\/:/  / \:\/:/  \/__//::\  \\:\  \ /:/  /\:\~~\~~\/__/\:\  \ /:/  /\:\/:/  \/__/\:\/:/ /:/  /
+      \::/__/   \::/__/    /:/\:\  \\:\  /:/  /  \:\  \       \:\  /:/  /  \::/__/      \::/_/:/  / 
+       \:\  \    \:\  \    \/__\:\  \\:\/:/  /    \:\  \       \:\/:/  /    \:\  \       \:\/:/  /  
+        \:\__\    \:\__\        \:\__\\::/  /      \:\__\       \::/  /      \:\__\       \::/  /   
+         \/__/     \/__/         \/__/ \/__/        \/__/        \/__/        \/__/        \/__/    
 
 
 - REMINDER: NEW SSKY QUEUE: qsub_summit -p ssky-preemptable
