@@ -34,9 +34,9 @@ The following software is available:
 - Jprogdyn - /projects/rpaton@colostate.edu/JPROGDYN 
 - AMBER18 - /projects/rpaton@colostate.edu/amber18
 
-- To see example usage: create a directory in your $PROJECTS folder and cd there, then type:
+To see example usage: create a directory in your $PROJECTS folder and cd there, then type:
 - RUNTEST all 
-- This will submit several jobs. When finished, check they ran properly:
+This will submit several jobs. When finished, check they ran properly:
 - CHECKTEST all
     
           ___       ___                 ___          ___                       ___                  
