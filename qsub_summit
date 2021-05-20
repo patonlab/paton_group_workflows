@@ -456,7 +456,7 @@ def main():
 
         generate_bash_script(abs_path, job_name, file_type, args.walltime, args.partition, args.qos, args.mail, args.nnode, nproc, chk_file, account, args.version, args.code, args.args)
         log.Write("\n   " + '{:<30} {:>35} {:>10} {:>15}'.format(account, file, nproc,  args.walltime))
-        log.Write("\n"+stars+"\n")
+    log.Write("\n"+stars+"\n")
 
 if __name__ == '__main__':
     main()
