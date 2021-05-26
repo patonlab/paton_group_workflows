@@ -20,13 +20,13 @@ To activate a python environment where rdkit, openbabel etc are present:
 - source activate DL_CPU (this may require edits to your .condarc file - ask RSP if this is an issue)
 
 The following software is available:
-- QChem 5.2 /projects/rpaton@colostate.edu/qchem
+- QChem 5.2.2 /projects/rpaton@colostate.edu/qchem
 - Gaussian 16 rev C.01 - /projects/rpaton@colostate.edu/g16/g16
 - Orca v4.2.1 - /projects/rpaton@colostate.edu/orca_4_2_1_linux_x86-64_openmpi216
 - NBO v7 - /projects/rpaton@colostate.edu/nbo6/bin/gaunbo7
 - NCIPlot v4 - /projects/rpaton@colostate.edu/nciplot/nciplot
-- Turbomole v7.3 - /projects/rpaton@colostate.edu/turbomole/TURBOMOLE
-- COSMOtherm v19 - /projects/rpaton@colostate.edu/turbomole/COSMOlogic/COSMOthermX19/COSMOtherm/BIN-LINUX/cosmotherm
+- Turbomole v7.5 - /projects/rpaton@colostate.edu/turbomole/TURBOMOLE
+- COSMOtherm2021 - /projects/rpaton@colostate.edu/BIOVIA/COSMOtherm2021/COSMOtherm/BIN-LINUX/cosmotherm
 - TeraChem 1.93P - /projects/rpaton@colostate.edu/TeraChem/bin/terachem 
 - XTB v6.4.0 - /projects/rpaton@colostate.edu/xtb_6.4.0/bin/xtb
 - CREST v2.11 - /projects/rpaton@colostate.edu/xtb_6.4.0/crest
@@ -49,7 +49,7 @@ This will submit several jobs. When finished, check they ran properly:
        \::/__/   \::/__/    /:/\:\  \\:\  /:/  /  \:\  \       \:\  /:/  /  \::/__/      \::/_/:/  / 
         \:\  \    \:\  \    \/__\:\  \\:\/:/  /    \:\  \       \:\/:/  /    \:\  \       \:\/:/  /  
          \:\__\    \:\__\        \:\__\\::/  /      \:\__\       \::/  /      \:\__\       \::/  /   
-          \/__/     \/__/         \/__/ \/__/        \/__/        \/__/        \/__/        \/__/    ¯\_(ツ)_/¯ last update May 20 2021
+          \/__/     \/__/         \/__/ \/__/        \/__/        \/__/        \/__/        \/__/    ¯\_(ツ)_/¯ last update May 26 2021
 
 
 - REMINDER: NEW SSKY QUEUE: qsub_summit -p ssky-preemptable
