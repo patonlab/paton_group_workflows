@@ -178,11 +178,12 @@ def Add_spin( arg1 ):
     cmd.set("specular", 1)
     cmd.set("transparency",0.5)
 
-def Add_homo( arg1 ):
+@cmd.extend
+def Add_homo( arg1, arg2):
     cmd.load(arg1+".cube")
     #postive and negative defined as different surfaces for different color
-    cmd.isosurface("homo_isoA", arg1 ,.02)
-    cmd.isosurface("homo_isoB", arg1 ,-.02)
+    cmd.isosurface("homo_isoA", arg1 ,float(arg2))
+    cmd.isosurface("homo_isoB", arg1 ,-float(arg2))
     cmd.color("red","homo_isoA")
     cmd.color("blue","homo_isoB")
     cmd.set("surface_quality",3)
@@ -194,11 +195,12 @@ def Add_homo( arg1 ):
     cmd.set("specular", 1)
     cmd.set("transparency",0.5)
 
-def Add_lumo( arg1 ):
+@cmd.extend
+def Add_lumo(arg1,arg2):
     cmd.load(arg1+".cube")
     #postive and negative defined as different surfaces for different color
-    cmd.isosurface("lumo_isoA", arg1 ,.02)
-    cmd.isosurface("lumo_isoB", arg1 ,-.02)
+    cmd.isosurface("lumo_isoA", arg1 ,float(arg2))
+    cmd.isosurface("lumo_isoB", arg1 ,-float(arg2))
     cmd.color("red","lumo_isoA")
     cmd.color("blue","lumo_isoB")
     cmd.set("surface_quality",3)
@@ -213,5 +215,5 @@ def Add_lumo( arg1 ):
 cmd.extend( "BallnStick", BallnStick );
 cmd.extend( "Add_VDW", Add_VDW );
 cmd.extend( "Add_spin", Add_spin );
-cmd.extend( "Add_homo", Add_homo );
-cmd.extend( "Add_lumo", Add_lumo );
+# cmd.extend( "Add_homo", Add_homo );
+# cmd.extend( "Add_lumo", Add_lumo);
