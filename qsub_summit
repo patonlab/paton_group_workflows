@@ -232,7 +232,7 @@ def generate_gaussian_script(job_name, chk_file, version):
                  'gaujob={0}\n'
                  'Homepath=$(pwd)\n'
                  '\n'
-                 'cp "$gaujob.com" $Sctchpath\n').format(job_name)
+                 'cp "$gaujob.com" $Sctchpath\n'
                  'cp "$gaujob.chk" $Sctchpath\n').format(job_name)
     bash_text += 'PATH=$PATH:/projects/$RSP/nbo7/bin\n'
 
