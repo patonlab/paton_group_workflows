@@ -131,7 +131,11 @@ def generate_xtb_script(job_name, code, nproc, args):
                  '\n'
                  'Homepath=$(pwd)\n'
                  '\n'
-                 'cp "$xtbjob.xyz" $Sctchpath\n').format(job_name)
+                 'cp "$xtbjob.xyz" $Sctchpath\n'
+		 'cp coord $Sctchpath\n'
+		 'cp coord.ref $Sctchpath\n'
+		 'cp constrain.inp $Sctchpath\n'
+		 ).format(job_name)
 
     bash_text += 'PATH=$PATH:/projects/$RSP/nbo7/bin\n'
 
