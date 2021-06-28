@@ -126,16 +126,22 @@ def generate_xtb_script(job_name, code, nproc, args):
                  'xtbjob={0}\n').format(job_name)
 
     #adding in scratch
-    bash_text += ('Sctchpath="/scratch/summit/$USER/$SLURM_JOB_ID"\n'
+    if 'cinp' in args:
+        bash_text += ('Sctchpath="/scratch/summit/$USER/$SLURM_JOB_ID"\n'
+                 'mkdir $Sctchpath\n'
+                 '\n'
+                 'Homepath=$(pwd)\n'
+                 '\n'
+                 'cp coord* constrain.inp $Sctchpath\n'
+                 ).format(job_name)
+    else:
+        bash_text += ('Sctchpath="/scratch/summit/$USER/$SLURM_JOB_ID"\n'
                  'mkdir $Sctchpath\n'
                  '\n'
                  'Homepath=$(pwd)\n'
                  '\n'
                  'cp "$xtbjob.xyz" $Sctchpath\n'
-		 'cp coord $Sctchpath\n'
-		 'cp coord.ref $Sctchpath\n'
-		 'cp constrain.inp $Sctchpath\n'
-		 ).format(job_name)
+                 ).format(job_name)
 
     bash_text += 'PATH=$PATH:/projects/$RSP/nbo7/bin\n'
 
@@ -177,13 +183,22 @@ def generate_xtb_script(job_name, code, nproc, args):
                 'mv crest_best.xyz $Homepath/$xtbjob.best.xyz\n'
                 'mv struc.xyz $Homepath/$xtbjob.struc.xyz\n'
                 'rm ./crest*').format(nproc)
-        elif args=='deprotonate':
+        elif 'deprotonate' in args:
             bash_text += ('\n'
                 'export PATH=$PATH:$XTBHOME/bin:\n'
                 '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+'-'+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
                 'mv ./deprotonated.xyz $Homepath/$xtbjob.deprotonated.xyz\n'
                 'mv ./struc.xyz $Homepath/$xtbjob.struc.xyz\n'
                 'rm ./deprotonate_*.xyz\n'
+                'rm ./crest*').format(nproc)
+        elif 'cinp' in args:
+            bash_text += ('\n'
+                'export PATH=$PATH:$XTBHOME/bin:\n'
+                '$XTBHOME/crest $Sctchpath/coord '+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
+                'rm -r METADYN* NORMMD* MRMSD wbo cregen_* coord*\n'
+                'mv crest_conformers.xyz $Homepath/$xtbjob.confs.xyz\n'
+                'mv crest_best.xyz $Homepath/$xtbjob.best.xyz\n'
+                'mv struc.xyz $Homepath/$xtbjob.struc.xyz\n'
                 'rm ./crest*').format(nproc)
         else:
             bash_text += ('\n'
