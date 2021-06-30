@@ -183,7 +183,7 @@ def generate_xtb_script(job_name, code, nproc, args):
                 'mv crest_best.xyz $Homepath/$xtbjob.best.xyz\n'
                 'mv struc.xyz $Homepath/$xtbjob.struc.xyz\n'
                 'rm ./crest*').format(nproc)
-	elif 'deprotonate' in args:
+        elif 'deprotonate' in args:
             bash_text += ('\n'
                 'export PATH=$PATH:$XTBHOME/bin:\n'
                 '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
@@ -199,7 +199,7 @@ def generate_xtb_script(job_name, code, nproc, args):
                 'mv ./struc.xyz $Homepath/$xtbjob.struc.xyz\n'
                 'rm ./protonate_*.xyz\n'
                 'rm ./crest*').format(nproc)
-	elif 'tautomerize' in args:
+        elif 'tautomerize' in args:
             bash_text += ('\n'
                 'export PATH=$PATH:$XTBHOME/bin:\n'
                 '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
@@ -207,7 +207,7 @@ def generate_xtb_script(job_name, code, nproc, args):
                 'mv ./struc.xyz $Homepath/$xtbjob.struc.xyz\n'
                 'rm ./tautomerize_*.xyz\n'
                 'rm ./crest*').format(nproc)
-	elif 'cinp' in args:
+        elif 'cinp' in args:
             bash_text += ('\n'
                 'export PATH=$PATH:$XTBHOME/bin:\n'
                 '$XTBHOME/crest $Sctchpath/coord '+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
