@@ -1,0 +1,122 @@
+ # ----------------- NCIPLOT ------------------------
+ # --- PLOTTING NON COVALENT INTERACTION REGIONS ----
+ # ---             E.R. Johnson                  ----
+ # ---          J. Contreras-Garcia              ----
+ # ----------    Duke University         ------------
+ #                                                   
+ # ---             A. de la Roza                  ---
+ # --------- University of California Merced --------
+ #                                                   
+ # ---               R. A. Boto                   ---
+ # ---                 C. Quan                     --
+ # --------  Université Pierre et Marie Curie -------
+ # --------------------------------------------------
+ # ---              Please cite                  ----
+ # --J. Am. Chem. Soc., 2010, 132 (18), pp 6498–6506-
+ # --------------------------------------------------
+ # --------------------------------------------------
+ # ---     Contributions for the wfn properties  ----
+ # ---      from H. L. Schmider are acknowledged  ---
+ # --------------------------------------------------
+ # --------------------------------------------------
+ # ---     Contributions for the wfx reader      ----
+ # ---      from Dave Arias are acknowledged      ---
+ # --------------------------------------------------
+ #
+ # Start -- 2021.08.08, 20:57:44.287
+
++ Read density file : /usr/local/nciplot/dat/h__lda.wfc
+  Log grid (r = a*e^(b*x)) with a =   2.4788E-03, b =   2.0000E-03
+  Num. grid points =  4392, rmax (bohr) =    16.1513
+  Integrated charge =           0.99999998
+  El. conf. :  1S(1)
+
++ Read density file : /usr/local/nciplot/dat/c__lda.wfc
+  Log grid (r = a*e^(b*x)) with a =   4.1313E-04, b =   2.0000E-03
+  Num. grid points =  5326, rmax (bohr) =    17.4308
+  Integrated charge =           5.99999996
+  El. conf. :  1S(2) 2S(2) 2P(2)
+
++ Read density file : /usr/local/nciplot/dat/n__lda.wfc
+  Log grid (r = a*e^(b*x)) with a =   3.5411E-04, b =   2.0000E-03
+  Num. grid points =  5343, rmax (bohr) =    15.4574
+  Integrated charge =           6.99999996
+  El. conf. :  1S(2) 2S(2) 2P(3)
+
++ Read density file : /usr/local/nciplot/dat/o__lda.wfc
+  Log grid (r = a*e^(b*x)) with a =   3.0984E-04, b =   2.0000E-03
+  Num. grid points =  5358, rmax (bohr) =    13.9372
+  Integrated charge =           7.99999996
+  El. conf. :  1S(2) 2S(2) 2P(4)
+
+-----------------------------------------------------
+      INPUT INFORMATION:
+-----------------------------------------------------
+
+-----------------------------------------------------
+      Calculation details:
+-----------------------------------------------------
+RHO  THRESHOLD   (au): 0.50
+RDG  THRESHOLD   (au): 1.00
+
+-----------------------------------------------------
+      Writing output in the following units:
+-----------------------------------------------------
+
+ Sign(lambda2)xDensity x Reduced Density Gradient    = paracetamol.dat
+
+ Reduced Density Gradient,RDG      = paracetamol-grad.cube
+ Sign(lambda2)xDensity,LS          = paracetamol-dens.cube
+ VMD script                        = paracetamol.vmd
+
+
+
+-----------------------------------------------------
+      Operating grid and increments: Grid-1
+-----------------------------------------------------
+ x0,y0,z0  =    -5.6692    -5.6692    -5.6692
+ x1,y1,z1  =     5.6692     5.6692     5.6692
+ ix,iy,iz  =  1.51    1.51    1.51
+ nx,ny,nz  =    8       8       8
+
+ Time for computing density & RDG =   0.07 secs
+  4.96% of small boxes are removed.
+
+
+-----------------------------------------------------
+      Operating grid and increments: Grid-2
+-----------------------------------------------------
+ x0,y0,z0  =    -5.6692    -5.6692    -5.6692
+ x1,y1,z1  =     5.6692     5.6692     5.6692
+ ix,iy,iz  =  0.76    0.76    0.76
+ nx,ny,nz  =   15      15      15
+
+ Time for computing density & RDG =   0.07 secs
+ 27.62% of small boxes are removed.
+
+
+-----------------------------------------------------
+      Operating grid and increments: Grid-3
+-----------------------------------------------------
+ x0,y0,z0  =    -5.6692    -5.6692    -5.6692
+ x1,y1,z1  =     5.6692     5.6692     5.6692
+ ix,iy,iz  =  0.38    0.38    0.38
+ nx,ny,nz  =   30      30      30
+
+ Time for computing density & RDG =   0.15 secs
+ 52.64% of small boxes are removed.
+
+
+-----------------------------------------------------
+      Operating grid and increments: Grid-4
+-----------------------------------------------------
+ x0,y0,z0  =    -5.6692    -5.6692    -5.6692
+ x1,y1,z1  =     5.6692     5.6692     5.6692
+ ix,iy,iz  =  0.19    0.19    0.19
+ nx,ny,nz  =   60      60      60
+
+ Time for computing density & RDG =   0.53 secs
+ 79.04% of small boxes are removed.
+ Time for writing outputs =   0.34 secs
+End -- 2021.08.08, 20:57:45.509
+
