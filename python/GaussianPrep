@@ -1,0 +1,140 @@
+#!/opt/anaconda/bin/python
+from __future__ import print_function
+
+# THIS SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+#
+# Comments and/or additions are welcome (send e-mail to:
+# robert.paton@chem.ox.ac.uk
+
+#Python Libraries
+import sys, os
+from decimal import Decimal
+from optparse import OptionParser
+import cclib as cc
+
+
+elements = ["", "H","He","Li","Be","B","C","N","O","F","Ne","Na","Mg","Al","Si",
+            "P","S","Cl","Ar","K","Ca","Sc","Ti","V","Cr","Mn","Fe","Co","Ni",
+            "Cu","Zn","Ga","Ge","As","Se","Br","Kr","Rb","Sr","Y","Zr","Nb","Mo",
+            "Tc","Ru","Rh","Pd","Ag","Cd","In","Sn","Sb","Te","I","Xe","Cs","Ba",
+            "La","Ce","Pr","Nd","Pm","Sm","Eu","Gd","Tb","Dy","Ho","Er","Tm","Yb",
+            "Lu","Hf","Ta","W","Re","Os","Ir","Pt","Au","Hg","Tl","Pb","Bi","Po","At",
+            "Rn","Fr","Ra","Ac","Th","Pa","U","Np","Pu","Am","Cm","Bk","Cf","Es","Fm",
+            "Md","No","Lr","Rf","Db","Sg","Bh","Hs","Mt","Ds","Rg","Uub","Uut","Uuq",
+            "Uup","Uuh","Uus","Uuo"]
+
+
+def parse_cc_data(calc_dir, filename):
+    ## Use cclib to parse QM data
+    file = calc_dir+'/'+filename
+    parser = cc.io.ccopen(file)
+    try:
+        data = parser.parse()
+        cc_data = data
+    except:
+        cc_data = None
+    return cc_data
+
+#Create Gaussian input file
+class writeGinput:
+
+############################################################################
+#                              Gaussian Format                             #
+#   %chk = $Link0                                                          #
+#   (%mem = $Mem)                                                          #
+#   (%nproc = $Nproc)                                                      #
+#   Route - desired calculation type                                       #
+#   $Charge $Mult                                                          #
+#   Molecule specification                                                 #
+#   ($Optional)                                                            #
+#   ($Freeze)                                                              #
+#   (radii = $Radii)                                                       #
+############################################################################
+
+    def __init__(self, file, Ginput, Mol):
+
+        root = os.path.splitext(file)[0]
+        newfile = root + '_' + Ginput.append + '.com'
+        chkfile = root + '_' + Ginput.append + '.chk'
+        title = root + '_' + Ginput.append + "created by GaussianPrep"
+
+        charge = Mol.charge if Ginput.charge == None else Ginput.charge
+        mult = Mol.mult if Ginput.mult == None else Ginput.mult
+        coords = Mol.atomcoords[-1]
+        atoms = [elements[atomno] for atomno in Mol.atomnos]
+
+        print("\nWriting", newfile, "\n")
+        fileout = open(newfile, "w")
+        fileout.write("%chk="+chkfile+"\n")
+
+        if hasattr(Ginput, "mem"): fileout.write("%mem="+str(Ginput.mem)+"\n")
+        if hasattr(Ginput, "nproc"): fileout.write("%nprocshared="+str(Ginput.nproc)+"\n")
+
+        fileout.write("# "+Ginput.route+"\n\n")
+        fileout.write(title+"\n\n")
+        fileout.write(str(charge)+" "+str(mult)+"\n")
+
+        for i, at in enumerate(atoms):
+            fileout.write(at)
+            for j in range(0,3):
+                fileout.write("  "+str(Decimal(str((coords[i][j])))))
+            fileout.write("\n")
+        fileout.write("\n")
+
+        if Ginput.optional != None:
+            for option in Ginput.optional: fileout.write(option+"\n")
+            fileout.write("\n")
+        if Ginput.freeze != None:
+            for frozen in Ginput.freeze: fileout.write(frozen+"\n")
+            fileout.write("\n")
+        if Ginput.genecp != None:
+            for genecp in Ginput.genecp: fileout.write(genecp+"\n")
+            fileout.write("\n")
+
+if __name__ == "__main__":
+    # get command line inputs. Use -h to list all possible arguments and default values
+    parser = OptionParser(usage="Usage: %prog [options] <input1>.log <input2>.log ...")
+    parser.add_option("--dir", dest="dir", action="store", help="directory containing files", default='.')
+    parser.add_option("--nproc", dest="nproc", action="store", help="num processors", default=24)
+    parser.add_option("--mem", dest="mem", action="store", help="memory", default='48GB')
+    parser.add_option("--charge", dest="charge", action="store", help="charge", default=None)
+    parser.add_option("--mult", dest="mult", action="store", help="multiplicity", default=None)
+    parser.add_option("--route", dest="route", action="store", help="route line for new job", default=None)
+    parser.add_option("--optional", dest="optional", action="store", help="optional lines", default=None)
+    parser.add_option("--genecp", dest="genecp", action="store", help="optional genecp lines", default=None)
+    parser.add_option("--append", dest="append", action="store", help="append this text to filenames", default="new")
+    parser.add_option("--freeze", dest="freeze", action="store", help="constrain coordinates", default=None)
+    (options, args) = parser.parse_args()
+
+    #job specifications
+    job = []
+
+    #input file(s)
+    outfiles = []
+
+    # Takes arguments: (1) input file(s) (*out) (2) new job parameters
+    if len(sys.argv) > 1:
+        for i, argv in enumerate(sys.argv):
+            try:
+                [root, ext] = os.path.splitext(argv)
+                if ext == '.log' or ext == '.out':
+                    outfiles.append(argv)
+            except: pass
+    else:
+        print("\nWrong number of arguments used. Correct format: GaussianPrep file [new job parameters]\n")
+        sys.exit()
+
+    print(outfiles)
+
+    for file in outfiles:
+        if options.route != None:
+            Mol = parse_cc_data('.', file)
+            Gwrite = writeGinput(file, options, Mol)
+        else:
+            print(' Please select a calculation type with --route !')

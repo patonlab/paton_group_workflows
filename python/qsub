@@ -1,0 +1,77 @@
+#!/opt/anaconda/bin/python
+
+import os, stat, sys
+from optparse import OptionParser
+
+# comp chem executables
+g16_exec = '/usr/local/g16/g16'
+orca_exec = '/usr/local/orca_5_0_1_linux_x86-64_shared_openmpi411/orca'
+qchem_exec = '/usr/local/qchem/bin/qchem'
+xtb_exec = '/usr/local/xtb/bin/xtb'
+crest_exec = '/usr/local/xtb/crest'
+
+class Logger:
+    """
+    Enables output to terminal and to text file.
+    Attributes:
+        log (file object): file to write GV output to.
+    """
+    def __init__(self, file):
+        self.log = open(file, 'w')
+
+    def write(self, message):
+        print(message, end='')
+        self.log.write(message)
+
+    def finalize(self):
+        self.log.close()
+
+# commandline arguments
+parser = OptionParser(usage="Usage: %prog [options] <input1>.log <input2>.log ...")
+parser.add_option("--nproc", dest="nproc", action="store", help="num processors", default=24)
+parser.add_option("--program", dest="program", action="store", help="request a particular comp chem software", default=None)
+parser.add_option("--script", dest="script", action="store", help="name of the submission script (default is sub.sh)", default="sub.sh")
+parser.add_option("--args", dest="args", action="store", help="additional arguments needed by the program at runtime", default="")
+(options, args) = parser.parse_args()
+
+# grab the input files
+inputfiles = []
+if len(sys.argv) > 1:
+    for i, argv in enumerate(sys.argv):
+        try:
+            [root, ext] = os.path.splitext(argv)
+            if ext != '.py':
+                inputfiles.append(argv)
+        except: pass
+
+# get the arguments
+nproc = options.nproc
+program = options.program
+sub_script = Logger(options.script)
+args = options.args
+
+# write out the commands
+for infile in inputfiles:
+
+    # define the output file for a given input. G16 gives log all others give out
+    [root, ext] = os.path.splitext(infile)
+    if ext == '.com' or ext == '.gjf': outfile = root + '.log'
+    else:   outfile = root + '.out'
+
+    # if the program is specified manually, then use that
+    if options.program != None:
+        if program == 'qchem' : sub_script.write('\n{} {} {} {} {} {} {}'.format(qchem_exec, infile, '-nt', nproc, args, '>', outfile))
+        elif program == 'crest' : sub_script.write('\n{} {} {} {} {} {} {}'.format(crest_exec, infile, '-T', nproc, args, '>', outfile))
+        elif program == 'g16' : sub_script.write('\n{} {} {} {}'.format(g16_exec, infile, '>', outfile))
+        elif program == 'orca' : sub_script.write('\n{} {} {} {}'.format(orca_exec, infile, '>', outfile))
+        elif program == 'xtb' : sub_script.write('\n{} {} {} {}'.format(xtb_exec, infile, '>', outfile))
+
+    # otherwise try to determine automatically
+    else:
+        if ext == '.com': sub_script.write('\n{} {} {} {}'.format(g16_exec, infile, '>', outfile))
+        if ext == '.inp': sub_script.write('\n{} {} {} {}'.format(orca_exec, infile, '>', outfile))
+        if ext == '.xyz': sub_script.write('\n{} {} {} {}'.format(xtb_exec, infile, args, '>', outfile))
+
+# make the script executable
+print('\n\n*** Creating Submission Script - Run nohup ./'+str(options.script), '& to run your jobs!')
+os.chmod(options.script, stat.S_IRWXU)
