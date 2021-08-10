@@ -1,0 +1,54 @@
+# .bash_profile
+
+# Get the aliases and functions
+if [ -f ~/.bashrc ]; then
+	. ~/.bashrc
+fi
+
+# User specific environment and startup programs
+
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/intel64_lin/
+
+# GAUSSIAN
+g16root="/usr/local"
+export g16root
+. $g16root/g16/bsd/g16.profile
+PATH=$PATH:$HOME/.local/bin:$HOME/bin:/usr/local/nbo7/bin
+export PATH
+
+# QCHEM
+. /usr/local/qchem/qcenv.sh
+
+# ORCA
+module load mpi
+export PATH=$PATH:/usr/local/bin
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/lib64/openmpi/lib
+#Orca4Path="/usr/local/orca_4_2_1_linux_x86-64_openmpi216/"
+Orca5Path="/usr/local/orca_5_0_1_linux_x86-64_shared_openmpi411/"
+#alias orca4=$Orca4Path/orca
+alias orca5=$Orca5Path/orca
+export PATH=$PATH:$Orca5Path
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/orca_5_0_1_linux_x86-64_shared_openmpi411
+export PSM2_MULTI_EP=0
+OMPI_MCA_btl_openib_warn_no_device_params_found=0
+export OMPI_MCA_btl_openib_warn_no_device_params_found
+
+# XTB and CREST
+XTBHOME=/usr/local/xtb
+export PATH=$PATH:$XTBHOME
+XTBPATH=${XTBHOME}/share/xtb:${HOME}
+MANPATH=${MANPATH}:${XTBHOME}/share/man
+PATH=${PATH}:${XTBHOME}/bin
+PKG_CONFIG_PATH=${PKG_CONFIG_PATH}:${XTBHOME}/share/xtb
+export PATH XTBPATH MANPATH PKG_CONFIG_PATH
+
+# COSMOtherm
+export PATH=/usr/local/BIOVIA/COSMOtherm2021/COSMOthermX:$PATH
+export PATH=/usr/local/BIOVIA/COSMOtherm2021/COSMOtherm/BIN-LINUX:$PATH
+
+# NCIPlot
+export PATH=/usr/local/nciplot:$PATH
+export NCIPLOT_HOME=/usr/local/nciplot
+
+# Group Python utlities
+export PATH=$PATH:/usr/local/patonlab/python
