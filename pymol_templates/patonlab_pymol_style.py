@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-# BallnStick creates a ball and stick representation of an object 
+# BallnStick creates a ball and stick representation of an object
 # Add_VDW creates a copy of an object with full-sized, transparent spheres
 # Bondi VDW values added below to override default Pymol settings
 
@@ -159,9 +159,12 @@ def nci(arg1, arg2, arg3):
 @cmd.extend
 def spin_density_plot( arg1 , arg2 ):
     cmd.load(arg1+".cube")
-    cmd.isosurface("spin_iso", arg1 , float(arg2))
-    cmd.ramp_new("ramp", arg1, range=[-1E-30,1E-30], color="[red, blue]")
-    cmd.set("surface_color","ramp", "spin_iso")
+    cmd.isosurface("spin_isoA", arg1 , float(arg2))
+    cmd.isosurface("spin_isoB", arg1 , -float(arg2))
+    cmd.color("red","spin_isoA")
+    cmd.color("blue","spin_isoB")
+    # cmd.ramp_new("ramp", arg1, color="[red, blue]")
+    # cmd.set("surface_color","ramp", "spin_iso")
     #cmd.set("surface_quality",3)
     #cmd.set("ray_texture", 2)
     #cmd.set("antialias", 3)
@@ -186,4 +189,3 @@ def mo_plot( arg1, arg2):
     #cmd.set("shininess", 50)
     #cmd.set("specular", 1)
     cmd.set("transparency",0.5)
-
