@@ -189,3 +189,20 @@ def mo_plot( arg1, arg2):
     #cmd.set("shininess", 50)
     #cmd.set("specular", 1)
     cmd.set("transparency",0.5)
+
+
+@cmd.extend
+def density_plot( arg1 , arg2 ):
+    cmd.load(arg1+".cube")
+    cmd.isosurface("dens_surface", arg1 , float(arg2))
+    cmd.color("red","dens_surface")
+    # cmd.ramp_new("ramp", arg1, color="[red, blue]")
+    # cmd.set("surface_color","ramp", "spin_iso")
+    #cmd.set("surface_quality",3)
+    #cmd.set("ray_texture", 2)
+    #cmd.set("antialias", 3)
+    #cmd.set("ambient", 0.5)
+    #cmd.set("spec_count", 5)
+    #cmd.set("shininess", 50)
+    #cmd.set("specular", 1)
+    cmd.set("transparency",0.7)
