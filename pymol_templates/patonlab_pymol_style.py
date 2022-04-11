@@ -189,3 +189,48 @@ def mo_plot( arg1, arg2):
     #cmd.set("shininess", 50)
     #cmd.set("specular", 1)
     cmd.set("transparency",0.5)
+
+
+@cmd.extend
+def density_plot( arg1 , arg2 ):
+    cmd.load(arg1+".cube")
+    cmd.isosurface("dens_surface_"+str(arg2), arg1 , float(arg2))
+    cmd.isosurface("dens_surface_-"+str(arg2), arg1 , float(arg2))
+    cmd.set("surface_color", "red", "dens_surface_"+str(arg2))
+    cmd.set("surface_color", "blue", "dens_surface_-"+str(arg2))
+    cmd.rebuild()
+    # cmd.set("surface_color","ramp", "spin_iso")
+    # cmd.ramp_new("ramp", arg1, color="[red, blue]")
+    # cmd.set("surface_color","ramp", "spin_iso")
+    #cmd.set("surface_quality",3)
+    #cmd.set("ray_texture", 2)
+    #cmd.set("antialias", 3)
+    #cmd.set("ambient", 0.5)
+    #cmd.set("spec_count", 5)
+    #cmd.set("shininess", 50)
+    #cmd.set("specular", 1)
+    cmd.set("transparency",0.7)
+
+@cmd.extend
+def esp_plot( arg1 , arg2, arg3):
+    #density
+    cmd.load(arg1+".cube")
+    #esp
+    cmd.load(arg2+".cube")
+    #ramp
+    stored.ramp_vals = [-.1,-.05,.0,.05,.1]
+    stored.ramp_cols = ['red', 'yellow', 'green', 'cyan', 'blue']
+    cmd.ramp_new("esp_ramp", arg2, stored.ramp_vals, stored.ramp_cols)
+
+    cmd.isosurface("esp_surface_"+str(arg3), arg1 , float(arg3))
+    cmd.set("surface_color","esp_ramp", "esp_surface_"+str(arg3))
+    # cmd.ramp_new("ramp", arg1, color="[red, blue]")
+    # cmd.set("surface_color","ramp", "spin_iso")
+    #cmd.set("surface_quality",3)
+    #cmd.set("ray_texture", 2)
+    #cmd.set("antialias", 3)
+    #cmd.set("ambient", 0.5)
+    #cmd.set("spec_count", 5)
+    #cmd.set("shininess", 50)
+    #cmd.set("specular", 1)
+    cmd.set("transparency",0.5)
