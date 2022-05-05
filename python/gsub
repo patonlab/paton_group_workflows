@@ -1,0 +1,450 @@
+#!/opt/apps/anaconda3/bin/python
+
+# -*- coding: utf-8 -*-
+from __future__ import print_function
+
+"""
+Submit script for ACME cluster. Generates and submits bash scripts for standard programs
+@authors: jake, Robert Paton, Santeri Aikonen
+"""
+
+import argparse
+import datetime
+import os
+import sys
+import time
+import re
+import subprocess
+
+QOS_ACCEPT = ['normal', 'debug', 'long']
+MAIL_ACCEPT = ['END', 'BEGIN', 'FAIL', 'ALL']
+
+# Print formatting
+stars = "   " + "*" * 93
+
+# Enables output to terminal and to text file
+class Logger:
+   def __init__(self, filein, suffix, append):
+      if os.path.exists(filein+"_"+append+"."+suffix): self.log = open(filein+"_"+append+"."+suffix, 'a' )
+      else: self.log = open(filein+"_"+append+"."+suffix, 'w' )
+
+   def Write(self, message):
+      print(message, end='')
+      self.log.write(message)
+
+   def Fatal(self, message):
+      print(message+"\n")
+      self.log.write(message + "\n"); self.Finalize()
+      sys.exit(1)
+
+   def Finalize(self):
+      self.log.close()
+
+def valid_walltime(s):
+    try:
+        return time.strptime(s, "%H:%M:%S")
+    except ValueError:
+        msg = "Not a valid date: '{0}'.".format(s)
+        raise argparse.ArgumentTypeError(msg)
+
+
+def determine_calculation_type(input_file):
+    abs_path = os.path.abspath(input_file)
+    abs_path = os.path.dirname(abs_path)
+    base_file = os.path.basename(input_file)
+    file_name, extension = os.path.splitext(base_file)
+    if extension == '.com':
+        file_type = 'gaussian'
+    elif extension == '.inp':
+        file_type = 'orca'
+    elif extension == '.sp':
+        file_type = 'terachem'
+    elif extension == '.xyz':
+        file_type = 'xtb'
+    elif extension == '.qcin':
+        file_type = 'qchem'
+    else:
+        file_type = 'none'
+
+    return abs_path, file_name, file_type
+
+
+def generate_bash_script(abs_path, job_name, file_type, walltime, qos, mail, nproc, chk_file, version, code, args):
+    bash_text = '#!/bin/bash\n'
+    #if qos == "normal" and int(walltime.split(':')[0]) > 24: print("WARNING: too many hours requested for qos = normal"); sys.exit()
+    #if qos == "condo" and int(walltime.split(':')[0]) > 168: print("WARNING: too many hours requested for qos = condo"); sys.exit()
+    bash_text += '#SBATCH -J ' + job_name + '\n'
+    bash_text += '#SBATCH -p ' + qos + '\n'
+    bash_text += '#SBATCH -t ' + walltime + '\n'
+    bash_text += '#SBATCH --export=NONE\n'
+    if nproc > 1:
+        bash_text += '#SBATCH --ntasks-per-node {0}\n'.format(nproc)
+    if mail is not None:
+        bash_text += '#SBATCH --mail-type=' + mail + '\n'
+        bash_text += '#SBATCH --mail-user=' + os.environ['USER'] + '\n'
+    bash_text += '\n'
+
+    if file_type == 'orca':
+        bash_text += generate_orca_script(job_name, nproc, chk_file, version)
+    elif file_type == 'gaussian':
+        bash_text += generate_gaussian_script(job_name, chk_file, version)
+    elif file_type == 'terachem':
+        bash_text += generate_terachem_script(job_name)
+    elif file_type == 'xtb':
+        bash_text += generate_xtb_script(job_name, code, nproc, args)
+    elif file_type == 'qchem':
+        bash_text += generate_qchem_script(job_name,nproc)
+
+    sub_script = abs_path + '/' + job_name + '.sh'
+    with open(sub_script, 'w') as f:
+        f.write(bash_text)
+
+    ## This is for automated submission using sbatch
+    command = "sbatch "+sub_script+" > /dev/null"
+    retcode = subprocess.call(command, shell=True)
+
+def generate_terachem_script(job_name):
+    bash_text = ('export TeraChem=/projects/$RSP/TeraChem\n'
+                 'export NBOEXE=/projects/$RSP/TeraChem/bin/nbo6.i4.exe\n'
+                 'export OMP_NUM_THREADS=24\n'
+                 'export LD_LIBRARY_PATH=/projects/$RSP/TeraChem/lib:$LD_LIBRARY_PATH\n'
+                 'export PATH=/projects/$RSP/TeraChem/bin:$PATH\n')
+
+    bash_text += ('\n'
+                  'terajob={0}\n'
+                  '$TeraChem/bin/terachem $terajob.sp >> $terajob.out\n').format(job_name)
+    return bash_text
+
+def generate_xtb_script(job_name, code, nproc, args):
+    bash_text = ('# XTB\n'
+                 'export XTBHOME=/projects/$RSP/xtb-6.4.0\n'
+                 'export PATH=$PATH:$XTBHOME\n'
+                 'xtbjob={0}\n').format(job_name)
+
+    #adding in scratch
+    if 'cinp' in args:
+        bash_text += ('Sctchpath="/scratch/summit/$USER/$SLURM_JOB_ID"\n'
+                 'mkdir $Sctchpath\n'
+                 '\n'
+                 'Homepath=$(pwd)\n'
+                 '\n'
+                 'cp coord* constrain.inp $Sctchpath\n'
+                 ).format(job_name)
+    else:
+        bash_text += ('Sctchpath="/scratch/summit/$USER/$SLURM_JOB_ID"\n'
+                 'mkdir $Sctchpath\n'
+                 '\n'
+                 'Homepath=$(pwd)\n'
+                 '\n'
+                 'cp "$xtbjob.xyz" $Sctchpath\n'
+                 ).format(job_name)
+
+    bash_text += 'PATH=$PATH:/projects/$RSP/nbo7/bin\n'
+
+    bash_text += ('\n'
+                  'cd $Sctchpath\n'
+                  '\n')
+
+    if code == 'xtb':
+        bash_text += ('# Add useful info to top of output file\n'
+                      '\n'
+                      'touch $Homepath/$xtbjob.xtb\n'
+                      'echo "Job Start Time: $(date)" > $Homepath/$xtbjob.xtb\n'
+                      'echo "SLURM Job ID: $SLURM_JOB_ID" >> $Homepath/$xtbjob.xtb\n'
+                      'echo "SLURM Job Name: $SLURM_JOB_NAME" >> $Homepath/$xtbjob.xtb\n'
+                      '\n')
+        bash_text += ('\n'
+            '$XTBHOME/bin/xtb $Sctchpath/$xtbjob.xyz '+args+' >> $Homepath/$xtbjob.xtb\n'
+            '\n'
+            'mv ./$xtbjob.* $Homepath/\n'
+            'mv ./charges $Homepath/\n'
+            'mv ./wbo $Homepath/\n'
+            'mv ./xtbrestart $Homepath/\n'
+            'mv ./xtbtopo.mol $Homepath/\n')
+
+    if code == 'crest':
+        bash_text += ('# Add useful info to top of output file\n'
+                      '\n'
+                      'touch $Homepath/$xtbjob.out\n'
+                      'echo "Job Start Time: $(date)" > $Homepath/$xtbjob.out\n'
+                      'echo "SLURM Job ID: $SLURM_JOB_ID" >> $Homepath/$xtbjob.out\n'
+                      'echo "SLURM Job Name: $SLURM_JOB_NAME" >> $Homepath/$xtbjob.out\n'
+                      '\n')
+        if args=='':
+            bash_text += ('\n'
+                'export PATH=$PATH:$XTBHOME/bin:\n'
+                '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
+                'rm -r METADYN* NORMMD* MRMSD wbo cregen_* coord*\n'
+                'mv crest_conformers.xyz $Homepath/$xtbjob.confs.xyz\n'
+                'mv crest_best.xyz $Homepath/$xtbjob.best.xyz\n'
+                'mv struc.xyz $Homepath/$xtbjob.struc.xyz\n'
+                'rm ./crest*').format(nproc)
+        elif 'deprotonate' in args:
+            bash_text += ('\n'
+                'export PATH=$PATH:$XTBHOME/bin:\n'
+                '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
+                'mv ./deprotonated.xyz $Homepath/$xtbjob.deprotonated.xyz\n'
+                'mv ./struc.xyz $Homepath/$xtbjob.struc.xyz\n'
+                'rm ./deprotonate_*.xyz\n'
+                'rm ./crest*').format(nproc)
+        elif 'protonate' in args:
+            bash_text += ('\n'
+                'export PATH=$PATH:$XTBHOME/bin:\n'
+                '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
+                'mv ./protonated.xyz $Homepath/$xtbjob.protonated.xyz\n'
+                'mv ./struc.xyz $Homepath/$xtbjob.struc.xyz\n'
+                'rm ./protonate_*.xyz\n'
+                'rm ./crest*').format(nproc)
+        elif 'tautomerize' in args:
+            bash_text += ('\n'
+                'export PATH=$PATH:$XTBHOME/bin:\n'
+                '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
+                'mv ./tautomers.xyz $Homepath/$xtbjob.tautomers.xyz\n'
+                'mv ./struc.xyz $Homepath/$xtbjob.struc.xyz\n'
+                'rm ./tautomerize_*.xyz\n'
+                'rm ./crest*').format(nproc)
+        elif 'cinp' in args:
+            bash_text += ('\n'
+                'export PATH=$PATH:$XTBHOME/bin:\n'
+                '$XTBHOME/crest $Sctchpath/coord '+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
+                'rm -r METADYN* NORMMD* MRMSD wbo cregen_* coord*\n'
+                'mv crest_conformers.xyz $Homepath/$xtbjob.confs.xyz\n'
+                'mv crest_best.xyz $Homepath/$xtbjob.best.xyz\n'
+                'mv struc.xyz $Homepath/$xtbjob.struc.xyz\n'
+                'rm ./crest*').format(nproc)
+        else:
+            bash_text += ('\n'
+                'export PATH=$PATH:$XTBHOME/bin:\n'
+                '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
+                'rm -r METADYN* NORMMD* MRMSD wbo cregen_* coord*\n'
+                'mv crest_conformers.xyz $Homepath/$xtbjob.confs.xyz\n'
+                'mv crest_best.xyz $Homepath/$xtbjob.best.xyz\n'
+                'mv struc.xyz $Homepath/$xtbjob.struc.xyz\n'
+                'rm ./crest*').format(nproc)
+
+    #need to edit for args if needed and GFN-xTB not working.
+    if code == 'enso':
+        bash_text += ('# Add useful info to top of output file\n'
+                      '\n'
+                      'touch $Homepath/$xtbjob.out\n'
+                      'echo "Job Start Time: $(date)" > $Homepath/$xtbjob.out\n'
+                      'echo "SLURM Job ID: $SLURM_JOB_ID" >> $Homepath/$xtbjob.out\n'
+                      'echo "SLURM Job Name: $SLURM_JOB_NAME" >> $Homepath/$xtbjob.out\n'
+                      '\n')
+        bash_text += ('\n'
+            'export PATH=$PATH:$XTBHOME/bin:\n'
+            'export PARA_ARCH=SMP\n'
+            'export PARNODES=4\n'  ## omp
+            '$XTBHOME/crest $Sctchpath/$xtbjob.xyz '+args+' -T {0} -niceprint >> $Homepath/$xtbjob.out\n'
+            'source /curc/sw/anaconda3/latest\n' # needed for activating conda on a node
+            'source activate DL_CPU\n' #NOT WORKING - above line should fix it!
+            'cp /home/$USER/bin/enso.py $Sctchpath/enso.py\n'
+            'python enso.py\n'
+            'export PYTHONUNBUFFERED=1\n'
+            'python enso.py -run > $Homepath/$xtbjob.enso.out\n'
+            'mv CONF* $Homepath\n'
+            'mv crest_conformers.xyz $Homepath/$xtbjob.crest_conformers.xyz\n'
+            'mv crest_rotamers.xyz $Homepath/$xtbjob.crest_rotamers.xyz\n'
+            'mv crest_best.xyz $Homepath/$xtbjob.crest_best.xyz\n'
+            'mv struc.xyz $Homepath/$xtbjob.struc.xyz\n'
+            'rm enso.py')
+    return bash_text
+
+def generate_gaussian_script(job_name, chk_file, version):
+    if version == 'b01':
+                 bash_text = ('g16root="/opt/apps/Gaussian/G16B"\n'
+                 'export g16root\n')
+    else:
+                 bash_text = ('g16root="/opt/apps/Gaussian/G16C"\n'
+                 'export g16root\n')
+    bash_text += '. $g16root/g16/bsd/g16.profile\n'
+
+    if chk_file is not None:
+        bash_text += 'cp "{0}" $Sctchpath\n'.format(chk_file)
+
+    bash_text += ('\n'
+                  #'cd $Sctchpath\n'
+                  #'\n'
+                  '# Add useful info to top of output file\n'
+                  '\n'
+                  'export GAUSS_SCRDIR="/tmp"\n'
+                  'gaujob={0}\n'
+                  'Homepath=$(pwd)\n'
+                  'touch $Homepath/$gaujob.log\n'
+                  'echo "Job Start Time: $(date)" > $Homepath/$gaujob.log\n'
+                  'echo "SLURM Job ID: $SLURM_JOB_ID" >> $Homepath/$gaujob.log\n'
+                  'echo "SLURM Job Name: $SLURM_JOB_NAME" >> $Homepath/$gaujob.log\n'
+                  '\n').format(job_name)
+    
+    bash_text += '$g16root/g16/g16 < $gaujob.com >> $Homepath/$gaujob.log\n'
+    
+    #bash_text += ('\n'
+    #              'Gaussian Job finished - now looking for checkpoint file'
+    #              'cp $Sctchpath/*.chk $Homepath/\n')
+    return bash_text
+
+def generate_orca_script(job_name, nproc, chk_file, version):
+    bash_text = ('source $HOME/.bash_profile\n'
+                 'module load openmpi/4.1.1-gcc-8.4.1\n'
+                 '\n'
+                 'export ORCADIR=/opt/apps/ORCA/Orca503\n' # Only one version currently available
+                 'export PATH=${ORCADIR}:$PATH\n'
+                 'export LD_LIBRARY_PATH=${ORCADIR}:$LD_LIBRARY_PATH\n'
+                 '\n')
+    # if version == 'v401':
+    #              bash_text += 'OrcaPath="/projects/$RSP/orca_4_0_1_2_linux_x86-64"\n'
+    # elif version == 'v412':
+    #              bash_text += 'OrcaPath="/projects/$RSP/orca_4_1_2_linux_x86-64_openmpi215"\n'
+    # elif version == 'v420':
+    #              bash_text += 'OrcaPath="/projects/$RSP/orca_4_2_0_linux_x86-64_openmpi216"\n'
+    # else:
+    #              bash_text += 'OrcaPath="/projects/$RSP/orca_4_2_1_linux_x86-64_openmpi216"\n'
+    bash_text += ('\n'
+                 'Orcajob={0}\n'
+                 'Sctchpath="/tmp/$SLURM_JOB_ID"\n' # Possible to find if error termination
+                 'Homepath=$(pwd)\n'
+                 'mkdir -p $Sctchpath\n' # -p creates all folders if parent folders are missing.
+                 '\n'
+                 'cp $Homepath/* $Sctchpath\n').format(job_name)
+
+    if chk_file is not None:
+        bash_text += 'cp "{0}" $Sctchpath\n'.format(chk_file)
+
+    bash_text += ('\n'
+                  'cd $Sctchpath\n'
+                  '\n')
+
+    bash_text += ('\n'
+                  '# Add useful info to top of output file\n'
+                  '\n'
+                  'echo "Job Start Time: $(date)" > $Homepath/$Orcajob.out\n'
+                  'echo "SLURM Job ID: $SLURM_JOB_ID" >> $Homepath/$Orcajob.out\n'
+                  'echo "SLURM Job Name: $SLURM_JOB_NAME" >> $Homepath/$Orcajob.out\n'
+                  'echo "SLURM Job Nodes: $SLURM_NODELIST" >> $Homepath/$Orcajob.out\n'
+                  'echo "SLURM Memory / CPU: $SLURM_MEM_PER_CPU" >> $Homepath/$Orcajob.out\n'
+                  '\n'
+                  '$ORCADIR/orca $Sctchpath/$Orcajob.inp >> $Homepath/$Orcajob.out\n'
+                  '\n'
+                  'cp ./$Orcajob.* $Homepath/\n'
+                  'cd $Homepath\n'
+                  'rm -fr $Sctchpath') # Memory control
+    return bash_text
+
+def generate_qchem_script(job_name, nproc):
+    bash_text = ('\n'
+        'qcroot="/opt/apps/qchem"\n'
+        'export qcroot\n'
+        '. $qcroot/qcenv.sh\n'
+        'qcjob={0}\n'
+        'Homepath=$(pwd)\n'
+        '\n'
+        '# Add useful info to top of output file\n'
+        'qchem -nt {1} $Homepath/$qcjob.qcin > $Homepath/$qcjob.out\n'.format(job_name,nproc))
+    return bash_text
+
+def parse_gaussian_inp(input_file, nproc):
+    with open(input_file, 'r') as f:
+        text = f.read()
+
+    old_chk_results = re.search(r'%oldchk= *"?(\w+.chk)"?', text)
+    chk_results = re.search(r'%chk= *"?(\w+.chk)"?', text)
+
+    f = open(input_file,"r")
+    n_cpu = None
+    for line in f.readlines():
+        if line.lower().find('%nproc') > -1:
+            try: n_cpu = int(line.split('=')[1])
+            except: pass
+
+    if n_cpu != nproc:
+        print("\n   Number of processors ({}) requested doesn't match input file ({}) specification!".format(nproc, n_cpu))
+        sys.exit()
+
+    if n_cpu > 32:
+        print("\n   Number of processors ({}) requested and/pr input file ({}) specification! exceed availble CPUs per node (32)".format(nproc, n_cpu))
+        sys.exit()
+
+    if not chk_results:
+        pass
+	#print("Gaussian com file must have chk file line")
+        #sys.exit(1)
+
+    try: chk_file = chk_results.group(1)
+    except AttributeError: chk_file = ''
+
+    if old_chk_results:  # if oldchk is specified in com file
+        chk_file = old_chk_results.group(1)
+        if not os.path.isfile(chk_file):  # error out if oldchk file doesn't exist
+            print("oldchk file specified but not found")
+            sys.exit(1)
+    elif not os.path.isfile(chk_file):  # if chk file is not present and %oldchk is not specified, clear chk_file
+        chk_file = None
+    return chk_file
+
+def parse_orca_inp(input_file, num_proc_per_node):
+    f = open(input_file,"r")
+    for line in f.readlines():
+        if line.lower().find('nprocs') > -1:
+            try: num_proc_total = int(line.split(' ')[-1])
+            except: pass
+    chk_file = None
+    # num_nodes = num_proc_total / num_proc_per_node
+    num_nodes = 0
+    if num_nodes != 0:
+        print('Not integer number of nodes for given nproc and total cpus')
+        sys.exit(1)
+
+    return int(num_nodes), chk_file
+
+debug = False
+
+def main():
+    TODAY = datetime.date.today()
+
+    # Start a log for the results
+    log = Logger("QSUB","sub", str(TODAY))
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument(nargs = '*', dest = 'input_file')
+    parser.add_argument('-t', '--walltime', type=str, default="12:00:00",
+                        help='Walltime for job in format hh:mm:ss (REQUIRED')
+    parser.add_argument('-q', '--qos', type=str, choices=QOS_ACCEPT, default=QOS_ACCEPT[0],
+                        help='Summit QOS to use for job')
+    parser.add_argument('-m', '--mail', type=str, choices=MAIL_ACCEPT, help='Send email upon given condition')
+    parser.add_argument('-n', '--nproc', type=int, default=16, help='Number of cpus to use per node')
+    parser.add_argument('--version', type=str, default='current', help='Request old version of Gaussian [b01 = B.01]')
+    parser.add_argument('--code', type=str, default='xtb', help='Request crest, xtb, or enso code routines')
+    parser.add_argument('--args', type=str, default='', help='Supply crest, xtb or enso arguments')
+    args = parser.parse_args()
+
+    if debug==True: print(args.input_file)
+
+    # default walltime limits
+    if args.qos == "debug": args.walltime = "00:30:00"
+    if args.qos == "long": args.walltime = "96:00:00"
+
+    log.Write("\n   " + '{:<30} {:>35} {:>10} {:>15}'.format("SUBMITTING TO ACCOUNT", "FILENAME", "nCPU", "WALLTIME"))
+    log.Write("\n"+stars+"")
+
+    for file in args.input_file:
+        abs_path, job_name, file_type = determine_calculation_type(file)
+
+        chk_file = None
+
+        nproc = args.nproc
+        if file_type == 'none':
+            print('Filetype not recognized')
+            sys.exit(1)
+        elif file_type == 'orca':
+            args.nnode, chk_file = parse_orca_inp(file, args.nproc)
+        elif file_type == 'gaussian':
+            chk_file = parse_gaussian_inp(file, args.nproc)
+            #nproc = 24
+
+        #make sure accounts partitions are compatible
+        generate_bash_script(abs_path, job_name, file_type, args.walltime, args.qos, args.mail, nproc, chk_file, args.version, args.code, args.args)
+        log.Write("\n   " + '{:<30} {:>35} {:>10} {:>15}'.format('', file, nproc,  args.walltime))
+    log.Write("\n"+stars+"\n")
+
+if __name__ == '__main__':
+    main()
