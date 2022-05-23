@@ -325,7 +325,7 @@ def generate_orca_script(job_name, nproc, chk_file, version):
                   '\n'
                   '$ORCADIR/orca $Sctchpath/$Orcajob.inp >> $Homepath/$Orcajob.out\n'
                   '\n'
-                  'cp ./$Orcajob.* $Homepath/\n'
+                  'cp ./$Orcajob* $Homepath/\n'
                   'cd $Homepath\n'
                   'rm -fr $Sctchpath') # Memory control
     return bash_text
