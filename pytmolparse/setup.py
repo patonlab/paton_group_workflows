@@ -24,7 +24,7 @@ setuptools.setup(
                  'Programming Language :: Python :: 3.8',
                  'Programming Language :: Python :: 3.9',
                  ],
-  install_requires=['setuptools','pathlib','numpy', 'pyssian'],
+  install_requires=['setuptools','pathlib','numpy','openbabel'],
   extras_require={'plotting functions':'matplotlib'},
   python_requires='>=3.6',
   include_package_data=True,
